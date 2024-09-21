@@ -1,14 +1,9 @@
 body {
-    background-color: #121212;
-    margin: 0;
-    padding: 0;
+  background-color: #121212;
+  margin: 0;
+  padding: 0;
 }
 
-canvas#scene {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
+#scene {
+  border: 1px solid #000;
 }

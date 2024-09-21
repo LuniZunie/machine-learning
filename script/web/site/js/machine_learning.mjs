@@ -1,6 +1,10 @@
 import './module/utility.mjs';
-import './module/math.mjs';
 import './module/logic_gate.mjs';
+import './module/math.mjs';
+import RejectionHandler from './module/debug.mjs';
+/* import Config from './module/config.mjs'; */
+
+var OUTPUT = false; // EXPERIMENT remove later
 
 const cache = new Map();
 
@@ -713,6 +717,8 @@ class Population {
       network.Setup.random();
     }
 
+    OUTPUT = true; // EXPERIMENT remove later
+
     this.#running = true;
 
     return true;
@@ -1021,6 +1027,9 @@ class Network {
   #index;
 
   #layers = new Map();
+  #update = new Map();
+
+  #height = 0;
 
   #score = 0;
 
@@ -1048,6 +1057,24 @@ class Network {
     return this.#index;
   }
 
+  get size() {
+    this.#isValid();
+
+    return this.#layers.size;
+  }
+
+  get height() {
+    this.#isValid();
+
+    return this.#height; // precalculated for optimization
+  }
+
+  get heights() {
+    this.#isValid();
+
+    return [ ...this.#layers.values() ].map(layer => layer.size);
+  }
+
   get score() {
     this.#isValid();
 
@@ -1069,6 +1096,23 @@ class Network {
     this.#score += δ;
   }
 
+  #OptimizeUpdate() {
+    for (const layer of [ ...this.#layers.values() ].reverse())
+      for (const neuron of layer.values())
+        neuron.UpdateOutputConnection();
+
+    for (const layer of this.#layers.values())
+      for (const neuron of layer.values()) {
+        neuron.UpdateInputConnection();
+
+        const connections = [ ...neuron.connections ];
+        for (const y of connections) {
+          if (!this.#update.has(y)) this.#update.set(y, new Set());
+          this.#update.get(y).add(neuron);
+        }
+      }
+  }
+
   get Setup() {
     this.#isValid();
 
@@ -1086,12 +1130,16 @@ class Network {
 
           const layers = network.#population.config.get('network.layers.list');
           for (const size of layers) {
+            if (size > network.#height) network.#height = size;
+
             const layer = new Map();
             network.#layers.set(network.#layers.size, layer);
 
             for (let i = 0; i < size; i++)
               layer.set(i, new Neuron(network, network.#layers.size - 1, i));
           }
+
+          network.#OptimizeUpdate();
 
           return true;
         }
@@ -1108,6 +1156,8 @@ class Network {
 
           const layers = network.#population.config.get('network.layers.list');
           for (const size of layers) {
+            if (size > network.#height) network.#height = size;
+
             const layer = new Map();
             network.#layers.set(network.#layers.size, layer);
 
@@ -1127,6 +1177,8 @@ class Network {
             }
           }
 
+          network.#OptimizeUpdate();
+
           return true;
         }
       },
@@ -1144,6 +1196,8 @@ class Network {
 
           const layers = network.#population.config.get('network.layers.list');
           for (const size of layers) {
+            if (size > network.#height) network.#height = size;
+
             const layer = new Map();
             network.#layers.set(network.#layers.size, layer);
 
@@ -1179,6 +1233,8 @@ class Network {
                 }
             }
           }
+
+          network.#OptimizeUpdate();
 
           return true;
         }
@@ -1257,6 +1313,15 @@ class Network {
 
     const network = this;
     return Object.freeze(Object.defineProperties({}, {
+      list: {
+        get() {
+          return [ ...network.#path.list.values() ]
+            .map(path => ({
+              from: { x: path.from.x, y: path.from.y },
+              to: { x: path.to.x, y: path.to.y },
+            }));
+        }
+      },
       exists: {
         value(...args) {
           network.#isValid();
@@ -1408,6 +1473,9 @@ class Neuron {
   #x;
   #y;
 
+  #connectedToOutput = false;
+  #inputConnections = new Set();
+
   #from = new Map();
   #to = new Map();
 
@@ -1449,6 +1517,68 @@ class Neuron {
     return this.#y;
   }
 
+  get connectedToOutput() {
+    this.#isValid();
+
+    return this.#connectedToOutput;
+  }
+
+  get connectedToInput() {
+    this.#isValid();
+
+    return this.#inputConnections.size > 0;
+  }
+
+  get inputConnections() {
+    this.#isValid();
+
+    return new Set(this.#inputConnections);
+  }
+
+  get connections() {
+    this.#isValid();
+
+    return this.#connectedToOutput ?
+      new Set(this.#inputConnections) :
+      new Set();
+  }
+
+  updates = 0; // EXPERIMENT remove later
+  UpdateOutputConnection() {
+    this.#isValid();
+
+    this.#connectedToOutput = false;
+    if (this.#x === this.#network.size - 1) this.#connectedToOutput = true;
+    else for (const [ neuron ] of this.#to)
+      if (neuron.connectedToOutput) {
+        this.#connectedToOutput = true;
+        break;
+      }
+
+    return this.#connectedToOutput;
+  }
+
+  UpdateInputConnection() {
+    this.#isValid();
+
+    this.updates = 0; // EXPERIMENT remove later
+    if (this.#x === 0) this.updates = 1; // EXPERIMENT remove later
+    else for (const [ neuron ] of this.#from) this.updates += neuron.updates; // EXPERIMENT remove later
+
+    this.#inputConnections.clear();
+    if (this.#x === 0) {
+      this.#inputConnections = new Set([ this.#y ]);
+      return new Set([ this.#y ]);
+    }
+
+    let set = new Set();
+    for (const [ neuron ] of this.#from)
+      set = set.union(neuron.inputConnections);
+
+    this.#inputConnections = set;
+    return new Set(set);
+  }
+
   get ID() {
     this.#isValid();
 
@@ -1472,6 +1602,8 @@ class Neuron {
   update() {
     this.#isValid();
 
+    if (OUTPUT) console.count(); // EXPERIMENT remove later
+
     let σ = 0;
     for (const [ neuron, path ] of this.#from) σ += neuron.value * path.weight;
     this.value = 1 / (1 + Math.exp(-(σ + this.#bias)));
@@ -1485,6 +1617,8 @@ class Neuron {
 
   set value(v) {
     this.#isValid();
+
+    if (this.#x === 0) console.count(); // EXPERIMENT remove later
 
     this.#value = v;
     for (const [ neuron ] of this.#to) neuron.update();
@@ -1634,4 +1768,4 @@ class Path {
   }
 }
 
-export { Config, Population };
+export { Population as NeuralPopulation, Network as NeuralNetwork, Neuron as NeuralNeuron, Path as NeuralPath, Config as NeuralConfig };
