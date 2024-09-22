@@ -195,6 +195,54 @@ const Ξif = (number = 0.5) => Math.random() < number; // XIif — random boolea
 Object.defineProperty(window, 'Ξif', { value: Ξif });
 
 /**
+ * @function
+ * @name XIweighted
+ * @param {number[]} weights - Array of weights
+ * @returns {number}
+ * @description Returns number based on weights (higher weight = higher probability)
+ * @example
+ * Ξweighted([ 1, 9 ]) // returns 0 with 10% probability and 1 with 90% probability
+ * Ξweighted([ 9, 1 ]) // returns 0 with 90% probability and 1 with 10% probability
+ */
+const Ξweighted = (weights) => { // weighted random
+  const σ = Σ(weights); // sum of weights
+  let ξ = Ξ(σ); // random number
+
+  let i = 0;
+  for (let w of weights) { // for each weight
+    w = +w; // convert weight to number
+    if (ξ < w) return i; // if random number is less than weight return index
+    ξ -= w; // subtract weight from random number
+    i++;
+  }
+}
+Object.defineProperty(window, 'Ξweighted', { value: Ξweighted });
+
+/**
+ * @function
+ * @name XIinvertedWeighted
+ * @param {number[]} weights - Array of weights
+ * @returns {number}
+ * @description Returns number based on weights (lower weight = higher probability)
+ * @example
+ * ΞinvertedWeighted([ 1, 9 ]) // returns 0 with 90% probability and 1 with 10% probability
+ * ΞinvertedWeighted([ 9, 1 ]) // returns 0 with 10% probability and 1 with 90% probability
+ */
+const ΞinvertedWeighted = (weights) => { // inverted weighted random
+  const σ = Σ(weights); // sum of weights
+  let ξ = Ξ(σ); // random number
+
+  let i = 0;
+  for (let w of weights) { // for each weight
+    w = σ - w; // invert weight
+    if (ξ < +w) return i; // if random number is less than weight return index
+    ξ -= +w; // subtract weight from random number
+    i++;
+  }
+}
+Object.defineProperty(window, 'ΞinvertedWeighted', { value: ΞinvertedWeighted });
+
+/**
  * @constant
  * @name pi
  * @type {number}

@@ -46,7 +46,7 @@ export default class Config {
     };
 
     { // value
-      template.value.has = (function() { return '__value__' in this; }).bind(template.value);
+      template.value.has = (function() { return 'value' in this; }).bind(template.value);
       template.value.get = (function(o, p, k, ...args) {
         const reject = new RejectionHandler(`${p.join(' > ')} (value [[get]]): Could not get value!`, o, p, k, this, args);
 
@@ -68,39 +68,39 @@ export default class Config {
 
         if (!('__deleter__' in this) || this.__deleter__.call({}, reject, classInstance, ...args))
           o.set(undefined, false, reject); // delete value with error handling and requirement handling
-        else if (!('__value__' in this)) reject.handle('No value attribute to delete!');
+        else if (!('value' in this)) reject.handle('No value attribute to delete!');
       }).bind(template.value, template, path, k);
       template.value.defined = (function(o, p) {
         const reject = new RejectionHandler(`${p.join(' > ')} (value [[defined]]): Could not check if value is defined!`, o, p);
 
-        if (!('__value__' in this)) reject.handle('No value attribute to check!'); // if value attribute does not exist
+        if (!('value' in this)) reject.handle('No value attribute to check!'); // if value attribute does not exist
         return this.__defined__;
       }).bind(template.value, template, path);
     }
     template.get = (function(reject) {
-      if ('__value__' in this.value) { // if value attribute exists
+      if ('value' in this.value) { // if value attribute exists
         if (this.value.__defined__) return this.value.value; // return value if defined
         else if ('__default__' in this.value) return this.value.default; // return default if not defined
         else reject.handle('Undefined value with no default for fallback!');
       } else reject.handle('No value attribute to get!');
     }).bind(template);
     template.set = (function(v, defined, reject, raw) {
-      if ('__value__' in this.value) { // if value attribute exists
+      if ('value' in this.value) { // if value attribute exists
         if (this.require(v, defined)) {
           this.value.__input__ = raw; // set input // FIX not used
 
-          this.value.__value__ = v; // set value
+          this.value.value = v; // set value
           this.value.__defined__ = defined; // set defined
         } else reject.handle('Value does not meet requirements!');
       } else reject.handle(`No value attribute to ${defined ? 'set' : 'delete'}!`);
     }).bind(template);
 
     { // object
-      template.object.has = (function() { return '__value__' in this; }).bind(template.object);
+      template.object.has = (function() { return 'value' in this; }).bind(template.object);
       template.object.get = (function(o, p, k) {
         const reject = new RejectionHandler(`${p.join(' > ')} (object [[get]]): Could not get object!`, o, p, k, classInstance, args);
 
-        if (!('__value__' in this)) reject.handle('No object attribute to get!');
+        if (!('value' in this)) reject.handle('No object attribute to get!');
 
         const rtn = {};
         const queue = [ [ rtn, k, o ] ];
@@ -111,7 +111,7 @@ export default class Config {
             obj.value = child.value.get(); // get value of child node
           } catch (e) { };
 
-          if ('__value__' in child.object) { // if object attribute exists
+          if ('value' in child.object) { // if object attribute exists
             obj.object = {}; // create object attribute
             for (const [ k, v ] of Object.entries(child.object.value)) // iterate over object attribute
               queue.push([ obj.object, k, v ]); // push child node to queue
@@ -127,18 +127,18 @@ export default class Config {
     }
 
     { // method
-      template.method.has = (function() { return '__value__' in this; }).bind(template.method);
+      template.method.has = (function() { return 'value' in this; }).bind(template.method);
       template.method.call = (function(o, p, k, ...args) {
         const reject = new RejectionHandler(`${p.join(' > ')} (method [[call]]): Could not call method!`, o, p, k, this, args);
 
-        if (!('__value__' in this)) reject.handle('No method attribute to call!');
+        if (!('value' in this)) reject.handle('No method attribute to call!');
 
         let v;
         try {
           v = o.get(reject); // get value with error handling and default handling
         } catch (e) { };
 
-        return this.__value__.call({}, v, reject, classInstance, ...args); // call method
+        return this.value.call({}, v, reject, classInstance, ...args); // call method
       }).bind(template.method, template, path, k);
     }
 
@@ -171,9 +171,9 @@ export default class Config {
             else reject.handle('Invalid direct (not <string>)!', v);
           } break;
 
-          case '$value': { // value.__value__
+          case '$value': { // value.value
             if (template.require(v)) { // if value meets requirements
-              template.value.__value__ = v; // set value
+              template.value.value = v; // set value
               template.value.__defined__ = true; // set defined
             } else reject.handle('Value does not meet requirements!', v, template.require.toString());
           } break;
@@ -198,8 +198,8 @@ export default class Config {
             else reject.handle(`Invalid ${fnName} (not <function> or [false])!`, v);
           } break;
 
-          case '$method': { // method.__value__
-            if (typeof v === 'function') template.method.__value__ = v; // set method if it is a function
+          case '$method': { // method.value
+            if (typeof v === 'function') template.method.value = v; // set method if it is a function
             else reject.handle('Invalid method (not <function>)!', v);
           } break;
 
@@ -212,9 +212,9 @@ export default class Config {
           default: reject.handle('Unexpected key after specialty key ("$")!', k);
         }
       else {
-        template.object.__value__ ??= {}; // create object attribute if it does not exist
+        template.object.value ??= {}; // create object attribute if it does not exist
         if (k.match(/[$.?>\s]/)) reject.handle('Invalid key (contains reserved characters ["$", "?", ".", ">"] or whitespace)!', k);
-        else if (typeof v === 'object' && v !== null) rtn.children.push([ template.object.__value__, k, v ]); // push child node to queue
+        else if (typeof v === 'object' && v !== null) rtn.children.push([ template.object.value, k, v ]); // push child node to queue
         else reject.handle('Invalid value (not <object>)!', v);
       }
     }
@@ -435,20 +435,43 @@ export default class Config {
 
         return Evaluate();
       } else if (typeof strs === 'object' && strs !== null) { // use config as template for passed object
-        const reject = new RejectionHandler('Could not execute config handler!', strs, args);
+        const reject = new RejectionHandler('Could not execute config handler!', strs);
+
+        function RecursiveFind(o, k) {
+          function validate(obj) {
+            const disabled = obj.disabled(); // check if object is disabled
+            if (disabled.disabled) reject.handle(`Object is disabled! (${disabled.reason})`); // handle disabled object
+
+            return obj;
+          }
+
+          let first = true;
+          do {
+            if (first) first = false;
+            else o = o.object.value[o.__direct__]; // get next (directed) object if not first iteration
+
+            if ('set' in o.value) return validate(o).value.set; break;
+          } while ('__direct__' in o);
+
+          reject.handle('Could not direct to path valid for setting!', k);
+        }
 
         const queue = [ [ config.#config, strs ] ];
         function Recurse(parent, o) {
           for (const [ k, v ] of Object.entries(o)) {
             if (k.startsWith('$')) {
-              switch (k) {
-                case '$value': {
-                  try {
-                    parent.value.set(v);
-                  } catch (e) { reject.handle(`Could not set value! (${e})`, v, e); }
-                } break;
-                default: reject.handle('Unexpected key after specialty key ("$")!', k);
+              let parent2;
+              if (k === '$') parent2 = parent;
+              else {
+                const k2 = k.slice(1);
+                if (k2 in parent.object.value) parent2 = parent.object.value[k2];
+                else reject.handle('Invalid path!', k, parent.object);
               }
+
+              const setter = RecursiveFind(parent2, k);
+              try {
+                setter(v);
+              } catch (e) { reject.handle(`Could not set value! (${e})`, v, e); }
             } else if (typeof v === 'object' && v !== null) {
               const obj = parent.object.value;
               if (k in obj) queue.push([ obj[k], v ]);

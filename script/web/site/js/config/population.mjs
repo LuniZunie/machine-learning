@@ -61,7 +61,7 @@ export default new Config({
       },
     },
 
-    layers: { // default: [ 2, 2, 1 ]
+    layers: { // default: [ 2, 2, 1 ] // TODO: maybe move from config.network.layers to config.layer
       $value: [ 2, 2, 1 ], // input, ...hidden, output
 
       $get(v) { return [ ...v ]; }, // clone array
@@ -216,11 +216,11 @@ export default new Config({
 
           $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
         },
-        δ: { // default: 0.1
-          // EXPERIMENT config.neuron.mutate.change.δ
-          $value: 0.1, // change δ
+        by: { // default: 0.1
+          // EXPERIMENT config.neuron.mutate.change.by
+          $value: 0.1, // change by
 
-          $method(v) { return ξsign(0, v) }, // get value in range [ -δ, δ ]
+          $method(v) { return Ξsign(0, v) }, // get value in range [-by, by]
 
           $require(v) { return Number.isFinite(v) && v >= 0; } // must be positive (or zero) and finite
         },
