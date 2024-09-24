@@ -64,9 +64,13 @@ class Population {
     this.#UpdatePreloaded(); // update preloaded values
   }
 
+  get preloaded() { return this.#preloaded; }
+
   #UpdatePreloaded() {
     this.#preloaded = { // preloaded values
       size: this.#config`get population.size`, // size of population
+
+      activationFunction: this.#config`get neuron.activation.function`, // value function
     };
   }
 
@@ -190,6 +194,8 @@ class Population {
       #bias = NaN; // bias of neuron
       #value = NaN; // value of neuron
 
+      #updateFunction; // update function of neuron
+
       #synapses = {
         input: new Map(), // synapses of input neurons (key: input neuron, value: synapse)
         output: new Map() // synapses of output neurons (key: output neuron, value: synapse)
@@ -209,6 +215,8 @@ class Population {
 
         const { min, max } = this.network.config`get neuron.bias.range`; // get bias range
         this.#bias = (+bias).clamp(min, max); // set bias
+
+        this.#UpdateUpdateFunction(); // update update function
       }
 
       get id() { return this.#id; }
@@ -224,7 +232,11 @@ class Population {
         if (typeof b !== 'number') new RejectionHandler('Could not set Neuron.bias!').handle('Bias must be a number!', b); // if bias is invalid
 
         const { min, max } = this.network.config`get neuron.bias.range`; // get bias range
-        return this.#bias = (+b).clamp(min, max); // set bias
+        this.#bias = (+b).clamp(min, max); // set bias
+
+        this.#UpdateUpdateFunction(); // update update function
+
+        return this.#bias; // return bias
       }
 
       get value() { return this.#value; } // get value
@@ -234,8 +246,18 @@ class Population {
         return this.#value = v; // set value
       }
 
+      #UpdateUpdateFunction() { // update the update function
+        const neurons = new Set(); // create set of neurons
+        for (let i = 0; i < this.#synapses.input.size; i++) // iterate through input synapses
+          neurons.add(`neurons[${i++}].value`); // add neuron to set
+
+        this.#updateFunction = new Function('neurons', 'activationFn' `
+          return activationFn(${neurons.join(' + ')}, ${this.#bias});
+        `).bind({}, this.#synapses.input.keys()); // return update function
+      }
+
       Update() { // update neuron
-        /* ... */ // TODO: Implement Neuron.prototype.update()
+        this.#value = this.#updateFunction(this.network.preloaded.activationFunction); // update value
       }
 
       get inputs() { // get input synapses
@@ -267,6 +289,8 @@ class Population {
         this.#synapses.output.set(neuron, synapse); // set output synapse
 
         neuron.ReceiveConnection(this.#y); // receive connection
+
+        this.#UpdateUpdateFunction(); // update update function
       }
 
       ReceiveConnection(synapse) {
@@ -284,6 +308,8 @@ class Population {
           reject.handle('Connection does not exist!', this.#depth, y); // if connection does not exist
 
         this.#synapses.input.set(input, synapse); // set input synapse
+
+        this.#UpdateUpdateFunction(); // update update function
       }
 
       get pointOnInputPath() { return this.#pointsOnInputPath.size > 0; } // get point on input path

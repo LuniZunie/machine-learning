@@ -134,9 +134,69 @@ export default new Config({
     },
   },
   neuron: {
-    value: {
+    activation: {
       function: { // default: <sigmoid function>
-        $value: function(σ, bias) { return 1 / (1 + Math.exp(-σ - bias)); }, // sigmoid function
+        $value: 'fast sigmoid', // sigmoid function
+
+        $set(v) { // set function
+          if (typeof v === 'function') return v; // return function
+          else switch (v) { // check string
+            // https://www.desmos.com/calculator/8ht4v4wruf — activation functions
+            case 'binary step':
+              return function(σ, bias) { return σ + bias >= 0 ? 1 : 0; }; // binary step function
+            case 'linear':
+              return function(σ, bias) { return σ + bias; }; // linear function
+            case 'sigmoid':
+              return function(σ, bias) { return 1 / (1 + Math.exp(-σ - bias)); }; // sigmoid function
+            case 'fast sigmoid':
+              return function(σ, bias) {
+                return σ + bias < 0 ?
+                  -1 / (2 * (σ + bias) - 1) - 1 :
+                  1 / (2 * (σ + bias) + 1) + 1;
+              }
+            case 'tanh':
+              return function(σ, bias) { return Math.tanh(σ + bias); }; // hyperbolic tangent function
+            case 'relu':
+              return function(σ, bias) { return Math.max(0, σ + bias); }; // rectified linear unit function
+            case 'leaky relu':
+              return function(σ, bias) { return Math.max(0.01 * (σ + bias), σ + bias); }; // leaky rectified linear unit function
+            case 'elu':
+              return function(σ, bias) { return σ + bias < 0 ? Math.exp(σ + bias) - 1 : σ + bias; }; // exponential linear unit function
+            case 'softplus':
+              return function(σ, bias) { return Math.log(1 + Math.exp(σ + bias)); }; // softplus function
+            case 'softsign':
+              return function(σ, bias) { return σ / (1 + Math.abs(σ + bias)); }; // softsign function
+            case 'bent identity':
+              return function(σ, bias) { return (Math.sqrt(Math.pow(σ + bias, 2) + 1) - 1) / 2 + σ + bias; }; // bent identity function
+            case 'silu':
+            case 'swish':
+              return function(σ, bias) { return σ / (1 + Math.exp(-σ - bias)); }; // sigmoid-weighted linear unit function
+            case 'mish': // TODO: check if this is correct
+              return function(σ, bias) { return σ * Math.tanh(Math.log(1 + Math.exp(σ + bias))); }; // mish function
+            case 'hard sigmoid': // TODO: check if this is correct
+              return function(σ, bias) { return Math.max(0, Math.min(1, 0.2 * σ + 0.5 + bias)); }; // hard sigmoid function
+            case 'Hard tanh': // TODO: check if this is correct
+              return function(σ, bias) { return Math.max(-1, Math.min(1, σ + bias)); }; // hard tanh function
+            case 'hard swish': // TODO: check if this is correct
+              return function(σ, bias) { return σ * Math.max(0, Math.min(1, 0.2 * σ + 0.5 + bias)); }; // hard swish function
+            case 'gelu': // TODO: check if this is correct
+              return function(σ, bias) { return 0.5 * σ * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (σ + 0.044715 * Math.pow(σ + bias, 3)))); }; // Gaussian error linear unit function
+            case 'isru': // TODO: check if this is correct
+              return function(σ, bias) { return σ / Math.sqrt(1 + 0.1 * Math.pow(σ + bias, 2)); }; // inverse square root unit function
+            case 'isrlu': // TODO: check if this is correct
+              return function(σ, bias) { return σ < 0 ? σ / Math.sqrt(1 + 0.1 * Math.pow(σ + bias, 2)) : σ; }; // inverse square root linear unit function
+            case 'softmax': // TODO: check if this is correct
+              return function(σ, bias) { return Math.exp(σ + bias) / Σ(Math.exp(σ + bias)); }; // softmax function
+            case 'softmin': // TODO: check if this is correct
+              return function(σ, bias) { return Math.exp(-σ - bias) / Σ(Math.exp(-σ - bias)); }; // softmin function
+            case 'softmax log': // TODO: check if this is correct
+              return function(σ, bias) { return Math.log(Σ(Math.exp(σ + bias))); }; // softmax log function
+            case 'softmin log': // TODO: check if this is correct
+              return function(σ, bias) { return Math.log(Σ(Math.exp(-σ - bias))); }; // softmin log function
+
+            default: return v;
+          }
+        },
 
         $require: 'function', // must be function
       },

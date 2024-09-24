@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-import { Config, Population } from '../../../site/js/machine_learning.mjs';
+import { Config, Population } from '../release/machine_learning.mjs';
 
 const Scene = {
   width: 1000,
