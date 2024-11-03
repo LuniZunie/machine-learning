@@ -23,380 +23,490 @@ import Config from './module/config.mjs';
 export default new Config({
   population: {
     size: { // default: 100
-      $value: 100, // number of neural networks
-
-      $require(v) { return Number.isInteger(v) && v > 0; }, // must be positive integer
+       // number of neural networks
+      [Config.value]: 100,
+      [Config.require]: v => Number.isInteger(v) && v > 0, // positive integer
     },
     equality: { // default: 10
-      $value: 10,  // how close distribution should be (percentage)
+       // how close leaderboard distribution should be (percentage)
+      [Config.value]: 10,
+      [Config.require]: v => v >= 0 && v < 100, // [0, 100)
 
-      $get(v) { return v / 100; }, // convert to percentage
-
-      $require(v) { return Number.isInteger(v) && v > 0; }, // must be positive integer
+      [Config.get]: v => v / 100, // convert to percentage
     },
   },
+
   network: {
     dynamic: { // default: true
-      $value: true, // dynamic network configuration
-
-      $require: 'boolean', // must be boolean
+      // if amount of layers and neurons per layer can change
+      [Config.value]: true,
+      [Config.require]: 'boolean', // must be boolean
     },
 
     inputs: { // default: 2
-      $value: 2, // number of input neurons
-
-      $require(v) { return Number.isInteger(v) && v > 0; }, // must be positive integer
-      $disabled($) { // disable if dynamic network configuration is disabled
-        return !$`get network.dynamic` &&
-          'Dynamic network configuration is disabled! (Inputs count set by network.layers[0])';
-      },
+       // number of input neurons when dynamic network configuration is enabled
+      [Config.value]: 2,
+      [Config.require]: v => Number.isInteger(v) && v > 1, // integers [1,∞)
+      [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is disabled! (Inputs count set by network.layers[0])',
     },
     outputs: { // default: 1
-      $value: 1, // number of output neurons
+       // number of output neurons when dynamic network configuration is enabled
+      [Config.value]: 1,
+      [Config.require]: v => Number.isInteger(v) && v > 1, // integers [1,∞)
+      [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is disabled! (Outputs count set by network.layers[-1])',
+    },
 
-      $require(v) { return Number.isInteger(v) && v > 0; }, // must be positive integer
-      $disabled($) { // disable if dynamic network configuration is disabled
-        return !$`get network.dynamic` &&
-          'Dynamic network configuration is disabled! (Outputs count set by network.layers[-1])';
+    layers: { // default: [ 2, 2, 1 ]
+      // neurons per layer when dynamic network configuration is disabled (input, ...hidden, output)
+      [Config.value]: [ 2, 2, 1 ],
+      [Config.require]: v => Array.isArray(v) && v.length > 1 && v.every(n => Number.isInteger(n) && n > 1), // array of positive integers [1,∞)
+      [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+
+      [Config.get]: v => [ ...v ], // clone array
+      [Config.set]: v => [ ...v ], // clone array
+    },
+
+    reward: {
+      function: { // default: mean of outputs function
+        [Config.value]: function(outputs) {
+          return μ(outputs); // mean of outputs
+        },
+        [Config.require]: 'function', // must be function
       },
     },
 
-    layers: { // default: [ 2, 2, 1 ] // TODO: maybe move from config.network.layers to config.layer
-      $value: [ 2, 2, 1 ], // input, ...hidden, output
-
-      $get(v) { return [ ...v ]; }, // clone array
-      $set(v) { return [ ...v ]; }, // clone array
-
-      $require(v) { return Array.isArray(v) && v.length > 1 && v.every(n => Number.isInteger(n) && n > 0); }, // must be array of positive integers
-      $disabled($) { // disable if dynamic network configuration is enabled
-        return $`get network.dynamic` &&
-          'Dynamic network configuration is enabled! (Variable layer sizes)';
+    output: {
+      function: { // default: empty function
+        [Config.default]: function(outputs) { },
+        [Config.require]: (v, defined, reject, $) => {
+          if (defined) {
+            if (typeof v === 'function') return true; // allow function
+            else return false; // reject non-finite values
+          } else return true; // allow deletion
+        },
       },
+    }
+  },
 
-      mutate: { // mutate layers
-        $method(v, reject, $) { // get all mutations
-          const ξs = Object.entries($`parse network.layers.mutate`.object); // get all random chances
+  neuron: {
+    activation: {
+      function: { // default: <sigmoid function>
+        // activation function
+        [Config.value]: 'fast sigmoid',
+        [Config.require]: 'function', // must be function
 
-          const mutations = new Set();
-          for (const [ k, { object: { chance: value } } ] of ξs)
-            if (Ξif(value)) mutations.add(k); // add mutation if random chance is met
+        [Config.set]: (fn, defined, reject) => { // set function
+          let vars = [];
+          if (typeof fn === 'function') return v; // return function
+          else if (typeof fn === 'object'){
+            fn = fn?.function; // get function from object
+            vars = fn?.with.map(v => Number.isFinite(v) ? v : reject.handle('Invalid activation function "with" value! (Expected number)', v, fn.with)) || []; // get variables
+          };
+
+          switch (fn.toLowerCase()) { // check string
+            // https://www.desmos.com/calculator/fvpt3vudwk — activation functions
+
+            case 'identity':
+            case 'linear':
+              // x
+              return function(v) { return v; };
+            case 'binary step':
+              // \left\{x\ge0:1,x<0:0\right\}
+              return function(v) { return v >= 0 ? 1 : 0; };
+            case 'logistic':
+            case 'sigmoid':
+            case 'soft step':
+              // \frac{1}{1+e^{-x}}
+              return function(v) { return 1 / (1 + Math.exp(-v)); };
+            case 'hyperbolic tangent':
+            case 'tanh':
+              // \tanh\left(x\right)
+              return function(v) { return Math.tanh(v); };
+            case 'soboleva modified hyperbolic tangent':
+            case 'smht':
+              if (vars.length !== 4) reject.handle('Invalid activation function "with" length! (Expected 4)', fn, vars); // require 4 variables
+
+              // \frac{e^{ax}-e^{-bx}}{e^{cx}+e^{-dx}}
+              return function(v) {  return (Math.E ** (vars[0] * v) - Math.E ** (-vars[1] * v)) / (Math.E ** (vars[2] * v) + Math.E ** (-vars[3] * v)); };
+            case 'rectified linear unit':
+            case 'relu':
+              // \max\left(0,x\right)
+              return function(v) { return Math.max(0, v); };
+            case 'gaussian error linear unit':
+            case 'gelu':
+              // \frac{1}{2}x\left(1+\operatorname{erf}\left(\frac{x}{\sqrt{2}}\right)\right)
+              return function(v) { return 0.5 * v * (1 + Math.erf(v / Math.SQRT2)); };
+            case 'softplus':
+              // \ln\left(1+e^x\right)
+              return function(v) { return Math.ln(1 + Math.exp(v)); };
+            case 'exponential linear unit':
+            case 'elu':
+              if (vars.length !== 1) reject.handle('Invalid activation function "with" length! (Expected 1)', fn, vars); // require 1 variable
+
+              // \left\{x\le0:a\left(e^{x}-1\right),x>0:x\right\}
+              return function(v) { return v <= 0 ? vars[0] * (Math.exp(v) - 1) : v; };
+            case 'scaled exponential linear unit':
+            case 'selu':
+              // 1.0507\left\{x<0:\left(1.67326\right)\left(e^{x}-1\right),x\ge0:x\right\}
+              return function(v) { return 1.0507 * (v < 0 ? 1.67326 * (Math.exp(v) - 1) : v); };
+            case 'leaky rectified linear unit':
+            case 'leaky relu':
+              // \left\{x\le0:0.01x,x>0:x\right\}
+              return function(v) { return v <= 0 ? 0.01 * v : v; };
+            case 'parametric rectified linear unit':
+            case 'prelu':
+              if (vars.length !== 1) reject.handle('Invalid activation function "with" length! (Expected 1)', fn, vars); // require 1 variable
+
+              // \left\{x<0:ax,x\ge0:x\right\}
+              return function(v) { return v < 0 ? vars[0] * v : v; };
+            case 'sigmoid linear unit':
+            case 'silu':
+            case 'sigmoid shrinkage':
+            case 'sil':
+            case 'swish':
+            case 'swish-1':
+              // \frac{x}{1+e^{-x}}
+              return function(v) { return v / (1 + Math.exp(-v)); };
+            case 'gaussian':
+              // e^{-x^{2}}
+              return function(v) { return Math.exp(-(v ** 2)); };
+
+            default: reject.handle('Activation function not predefined!', fn); // reject invalid function
+          }
+
+          return reject.handle('Invalid activation function!', fn); // reject invalid function
+        }
+      },
+    },
+
+    bias: {
+      [Config.direct]: 'range', // inherit range
+
+      range: { // default: { min: -1, max: 1 }
+        // range of neuron bias
+        [Config.get]: (v, reject, $) => { // get range
+          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`;
+
+          return { min, max }; // return range
+        },
+        [Config.set]: (v, reject, $, config) => { // set range
+          try {
+            $`set neuron.bias.range.min`($`get neuron.bias.range.min`); // set min
+            $`set neuron.bias.range.max`($`get neuron.bias.range.max`); // set max
+          } catch (e) { reject(e); } // reject error
+        },
+        [Config.delete]: (v, reject, $, config) => { // delete range
+          try {
+            $`delete neuron.bias.range.min`; // delete min
+            $`delete neuron.bias.range.max`; // delete max
+          } catch (e) { reject(e); } // reject error
+        },
+
+        [Config.method]: (v, reject, $) => {
+          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`;
+
+          return Ξ(min, max); // return random value
+        },
+
+        min: { // default: -1
+          // minimum bias value
+          [Config.value]: -1,
+          [Config.default]: -Infinity, // default: -∞
+          [Config.require]: (v, defined, reject, $) => {
+            if (defined) {
+              if (Number.isFinite(v)) return v <= $`get neuron.bias.range.max` && v <= 0; // require min <= max and min <= 0
+              else return false; // reject non-finite values
+            } else return true; // allow deletion
+          },
+        },
+        max: { // default: 1
+          // maximum bias value
+          [Config.value]: 1,
+          [Config.default]: Infinity, // default: ∞
+          [Config.require]: (v, defined, reject, $) => {
+            if (defined) {
+              if (Number.isFinite(v)) return v >= $`get neuron.bias.range.min` && v >= 0; // require max >= min and max >= 0
+              else return false; // reject non-finite values
+            } else return true; // allow deletion
+          }
+        },
+      },
+    },
+  },
+
+  synapse: {
+    weight: {
+      [Config.direct]: 'range', // inherit range
+
+      range: { // default: { min: -1, max: 1 }
+        // range of synapse weight
+
+        [Config.get]: (v, reject, $) => { // get range
+          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`;
+
+          return { min, max }; // return range
+        },
+        [Config.set]: (v, reject, $, config) => { // set range
+          try {
+            $`set synapse.weight.range.min`(v?.min); // set min
+            $`set synapse.weight.range.max`(v?.max); // set max
+          } catch (e) { reject(e); } // reject error
+        },
+        [Config.delete]: (v, reject, $, config) => { // delete range
+          try {
+            $`delete synapse.weight.range.min`; // delete min
+            $`delete synapse.weight.range.max`; // delete max
+          } catch (e) { reject(e); } // reject error
+        },
+
+        [Config.method]: (v, reject, $) => {
+          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`;
+
+          return Ξ(min, max); // return random value
+        },
+
+        min: { // default: -1
+          // minimum weight value
+          [Config.value]: -1,
+
+          [Config.require]: (v, defined, reject, $) => {
+            if (defined) {
+              if (Number.isFinite(v)) return v <= $`get synapse.weight.range.max` && v <= 0; // require min <= max and min <= 0
+              else return false; // reject non-finite values
+            } else return true; // allow deletion
+          },
+        },
+        max: { // default: 1
+          // maximum weight value
+          [Config.value]: 1,
+          [Config.require]: (v, defined, reject, $) => {
+            if (defined) {
+              if (Number.isFinite(v)) return v >= $`get synapse.weight.range.min` && v >= 0; // require max >= min and max >= 0
+              else return false; // reject non-finite values
+            } else return true; // allow deletion
+          }
+        },
+      },
+    },
+  },
+
+  mutate: {
+    evolve: { // default: true
+      layer: {
+        [Config.method]: (v, reject, $) => {
+          const ξs = Object.keys($`parse mutate.evolve.layer`.object); // get all random chances
+
+          const mutations = new Map();
+          for (const k of ξs) mutations.set(k, $`run mutate.evolve.layer.${k}`); // get random chance
 
           return mutations; // return all mutations
         },
 
-        add: { // add a layer
-          $direct: 'chance', // inherit chance
+        [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
 
-          $disabled($) { // disable if dynamic network configuration is enabled
-            return $`get network.dynamic` &&
-              'Dynamic network configuration is enabled! (Variable layer sizes)';
+        add: { // default: 10
+          // chance of adding a layer (percentage)
+          [Config.value]: 10,
+          [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+          [Config.get]: v => v / 100, // convert to percentage
+          [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
+          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+        },
+        remove: { // default: 10
+          // chance of removing a layer (percentage)
+          [Config.value]: 10,
+          [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+          [Config.get]: v => v / 100, // convert to percentage
+          [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
+          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+        },
+      },
+
+      neuron: {
+        [Config.method]: (v, reject, $) => {
+          const ξs = Object.keys($`parse mutate.evolve.neuron`.object); // get all random chances
+
+          const mutations = new Map();
+          for (const k of ξs) mutations.set(k, $`run mutate.evolve.neuron.${k}`); // get random chance
+
+          return mutations; // return all mutations
+        },
+
+        add: { // default: 10
+          // chance of adding a neuron (percentage)
+          [Config.value]: 10,
+          [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+          [Config.get]: v => v / 100, // convert to percentage
+          [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
+
+          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+        },
+        change: {
+          [Config.direct]: 'chance', // inherit chance
+
+          [Config.method]: (v, reject, $) => {
+            if ($`run mutate.evolve.neuron.change.chance`) // check if random change chance is met
+              return $`run mutate.evolve.neuron.change.amount`; // return random change value
+
+            return null; // return no change (different from 0 but evaluates the same)
           },
 
           chance: { // default: 10
-            // EXPERIMENT config.network.layers.mutate.add.chance
-            $value: 10, // chance of a added layer (percentage)
-
-            $get(v) { return v / 100; }, // convert to percentage
-
-            $method(v) { return Ξif(v); }, // check if random chance is met
-
-            $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
-            $disabled($) { // disable if dynamic network configuration is enabled
-              return $`get network.dynamic` &&
-                'Dynamic network configuration is enabled! (Variable layer sizes)';
-            },
+            // chance of changing a neuron (percentage)
+            [Config.value]: 10,
+            [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+            [Config.get]: v => v / 100, // convert to percentage
+            [Config.method]: v => Ξif(v), // check if random chance is met
+          },
+          amount: { // default: 0.1
+            // amount of change
+            [Config.value]: 0.1,
+            [Config.require]: v => Number.isFinite(v) && v >= 0, // positive (or zero) and finite
+            [Config.method]: v => Ξsign(0, v), // get value in range [-by, by]
           },
         },
-        remove: { // remove a layer
-          $direct: 'chance', // inherit chance
+        remove: { // default: 10
+          // chance of removing a neuron (percentage)
+          [Config.value]: 10,
+          [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+          [Config.get]: v => v / 100, // convert to percentage
+          [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
 
-          $disabled($) { // disable if dynamic network configuration is enabled
-            return $`get network.dynamic` &&
-              'Dynamic network configuration is enabled! (Variable layer sizes)';
+          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+        },
+      },
+
+      synapse: {
+        [Config.method]: (v, reject, $) => {
+          const ξs = Object.keys($`parse mutate.evolve.synapse`.object); // get all random chances
+
+          const mutations = new Map();
+          for (const k of ξs) mutations.set(k, $`run mutate.evolve.synapse.${k}`); // get random chance
+
+          return mutations; // return all mutations
+        },
+
+        add: { // default: 10
+          // chance of adding a synapse (percentage)
+          [Config.value]: 10,
+          [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+          [Config.get]: v => v / 100, // convert to percentage
+          [Config.method]: v => Ξif(v), // check if random chance is met
+        },
+        change: {
+          [Config.direct]: 'chance', // inherit chance
+
+          [Config.method]: (v, reject, $) => {
+            if ($`run mutate.evolve.synapse.change.chance`) // check if random change chance is met
+              return $`run mutate.evolve.synapse.change.amount`; // return random change value
+
+            return null; // return no change (different from 0 but evaluates the same)
           },
 
           chance: { // default: 10
-            // EXPERIMENT config.network.layers.mutate.remove.chance
-            $value: 10, // chance of a removed layer (percentage)
+            // chance of changing a synapse (percentage)
+            [Config.value]: 10,
+            [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+            [Config.get]: v => v / 100, // convert to percentage
+            [Config.method]: v => Ξif(v), // check if random chance is met
+          },
+          amount: { // default: 0.1
+            // amount of change
+            [Config.value]: 0.1,
+            [Config.require]: v => Number.isFinite(v) && v >= 0, // positive (or zero) and finite
+            [Config.method]: v => Ξsign(0, v), // get value in range [-by, by]
+          },
+        },
+        remove: { // default: 10
+          // chance of removing a synapse (percentage)
+          [Config.value]: 10,
+          [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+          [Config.get]: v => v / 100, // convert to percentage
+          [Config.method]: v => Ξif(v), // check if random chance is met
+        },
+      },
+    },
 
-            $get(v) { return v / 100; }, // convert to percentage
+    adapt: { // default: false
+      // if population should adapt during each generation
+      [Config.value]: false,
+      [Config.require]: 'boolean', // must be boolean
 
-            $method(v) { return Ξif(v); }, // check if random chance is met
+      iterations: { // default: 10
+        // size of adaptation pool
+        [Config.value]: 10,
+        [Config.require]: v => Number.isInteger(v) && v > 0, // positive integer
+      },
 
-            $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
-            $disabled($) { // disable if dynamic network configuration is enabled
-              return $`get network.dynamic` &&
-                'Dynamic network configuration is enabled! (Variable layer sizes)';
-            },
+      neuron: {
+        [Config.method]: (v, reject, $) => {
+          const ξs = Object.keys($`parse mutate.adapt.neuron`.object); // get all random chances
+
+          const mutations = new Map();
+          for (const k of ξs) mutations.set(k, $`run mutate.adapt.neuron.${k}`); // get random chance
+
+          return mutations; // return all mutations
+        },
+
+        change: {
+          [Config.direct]: 'chance', // inherit chance
+
+          [Config.method]: (v, reject, $) => {
+            if ($`run mutate.adapt.neuron.change.chance`) // check if random change chance is met
+              return $`run mutate.adapt.neuron.change.amount`; // return random change value
+
+            return null; // return no change (different from 0 but evaluates the same)
+          },
+
+          chance: { // default: 10
+            // chance of changing a neuron (percentage)
+            [Config.value]: 10,
+            [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+            [Config.get]: v => v / 100, // convert to percentage
+            [Config.method]: v => Ξif(v), // check if random chance is met
+          },
+          amount: { // default: 0.1
+            // amount of change
+            [Config.value]: 0.1,
+            [Config.require]: v => Number.isFinite(v) && v >= 0, // positive (or zero) and finite
+            [Config.method]: v => Ξsign(0, v), // get value in range [-by, by]
           },
         },
       },
-    },
-  },
-  neuron: {
-    activation: {
-      function: { // default: <sigmoid function>
-        $value: 'fast sigmoid', // sigmoid function
 
-        $set(v) { // set function
-          if (typeof v === 'function') return v; // return function
-          else switch (v) { // check string
-            // https://www.desmos.com/calculator/8ht4v4wruf — activation functions
-            case 'binary step':
-              return function(σ, bias) { return σ + bias >= 0 ? 1 : 0; }; // binary step function
-            case 'linear':
-              return function(σ, bias) { return σ + bias; }; // linear function
-            case 'sigmoid':
-              return function(σ, bias) { return 1 / (1 + Math.exp(-σ - bias)); }; // sigmoid function
-            case 'fast sigmoid':
-              return function(σ, bias) {
-                return σ + bias < 0 ?
-                  -1 / (2 * (σ + bias) - 1) - 1 :
-                  1 / (2 * (σ + bias) + 1) + 1;
-              }
-            case 'tanh':
-              return function(σ, bias) { return Math.tanh(σ + bias); }; // hyperbolic tangent function
-            case 'relu':
-              return function(σ, bias) { return Math.max(0, σ + bias); }; // rectified linear unit function
-            case 'leaky relu':
-              return function(σ, bias) { return Math.max(0.01 * (σ + bias), σ + bias); }; // leaky rectified linear unit function
-            case 'elu':
-              return function(σ, bias) { return σ + bias < 0 ? Math.exp(σ + bias) - 1 : σ + bias; }; // exponential linear unit function
-            case 'softplus':
-              return function(σ, bias) { return Math.log(1 + Math.exp(σ + bias)); }; // softplus function
-            case 'softsign':
-              return function(σ, bias) { return σ / (1 + Math.abs(σ + bias)); }; // softsign function
-            case 'bent identity':
-              return function(σ, bias) { return (Math.sqrt(Math.pow(σ + bias, 2) + 1) - 1) / 2 + σ + bias; }; // bent identity function
-            case 'silu':
-            case 'swish':
-              return function(σ, bias) { return σ / (1 + Math.exp(-σ - bias)); }; // sigmoid-weighted linear unit function
-            case 'mish': // TODO: check if this is correct
-              return function(σ, bias) { return σ * Math.tanh(Math.log(1 + Math.exp(σ + bias))); }; // mish function
-            case 'hard sigmoid': // TODO: check if this is correct
-              return function(σ, bias) { return Math.max(0, Math.min(1, 0.2 * σ + 0.5 + bias)); }; // hard sigmoid function
-            case 'Hard tanh': // TODO: check if this is correct
-              return function(σ, bias) { return Math.max(-1, Math.min(1, σ + bias)); }; // hard tanh function
-            case 'hard swish': // TODO: check if this is correct
-              return function(σ, bias) { return σ * Math.max(0, Math.min(1, 0.2 * σ + 0.5 + bias)); }; // hard swish function
-            case 'gelu': // TODO: check if this is correct
-              return function(σ, bias) { return 0.5 * σ * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (σ + 0.044715 * Math.pow(σ + bias, 3)))); }; // Gaussian error linear unit function
-            case 'isru': // TODO: check if this is correct
-              return function(σ, bias) { return σ / Math.sqrt(1 + 0.1 * Math.pow(σ + bias, 2)); }; // inverse square root unit function
-            case 'isrlu': // TODO: check if this is correct
-              return function(σ, bias) { return σ < 0 ? σ / Math.sqrt(1 + 0.1 * Math.pow(σ + bias, 2)) : σ; }; // inverse square root linear unit function
-            case 'softmax': // TODO: check if this is correct
-              return function(σ, bias) { return Math.exp(σ + bias) / Σ(Math.exp(σ + bias)); }; // softmax function
-            case 'softmin': // TODO: check if this is correct
-              return function(σ, bias) { return Math.exp(-σ - bias) / Σ(Math.exp(-σ - bias)); }; // softmin function
-            case 'softmax log': // TODO: check if this is correct
-              return function(σ, bias) { return Math.log(Σ(Math.exp(σ + bias))); }; // softmax log function
-            case 'softmin log': // TODO: check if this is correct
-              return function(σ, bias) { return Math.log(Σ(Math.exp(-σ - bias))); }; // softmin log function
+      synapse: {
+        [Config.method]: (v, reject, $) => {
+          const ξs = Object.keys($`parse mutate.adapt.`.object); // get all random chances
 
-            default: return v;
-          }
+          const mutations = new Map();
+          for (const k of ξs) mutations.set(k, $`run mutate.adapt.synapse.${k}`); // get random chance
+
+          return mutations; // return all mutations
         },
 
-        $require: 'function', // must be function
-      },
-    },
+        change: {
+          [Config.direct]: 'chance', // inherit chance
 
-    bias: { // neuron bias
-      $direct: 'range', // inherit range
+          [Config.method]: (v, reject, $) => {
+            if ($`run mutate.adapt.synapse.change.chance`) // check if random change chance is met
+              return $`run mutate.adapt.synapse.change.amount`; // return random change value
 
-      range: { // range of neuron bias
-        $get(v, reject, $) { // get range
-          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`;
+            return null; // return no change (different from 0 but evaluates the same)
+          },
 
-          return { min, max }; // return range
-        },
-
-        $method(v, reject, $) { // get random value
-          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`;
-
-          return Ξ(min, max); // return random value
-        },
-
-        min: { // default: -1
-          $value: -1, // minimum bias value
-
-          $require: 'finite', // must be finite
-        },
-        max: { // default: 1
-          $value: 1, // maximum bias value
-
-          $require: 'finite', // must be finite
-        },
-      },
-    },
-
-    mutate: { // mutate neurons
-      $method(v, reject, $) { // get all mutations
-        const ξs = Object.entries($`parse neuron.mutate`.object); // get all random chances
-
-        const mutations = new Set();
-        for (const [ k, { object: { chance: value } } ] of ξs)
-          if (Ξif(value)) mutations.add(k); // add mutation if random chance is met
-
-        return mutations; // return all mutations
-      },
-
-      add: {
-        $direct: 'chance', // inherit chance
-
-        chance: { // default: 10
-          // EXPERIMENT config.neuron.mutate.add.chance
-          $value: 10, // chance of a added neuron (percentage)
-
-          $get(v) { return v / 100; }, // convert to percentage
-
-          $method(v) { return Ξif(v); }, // check if random chance is met
-
-          $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
-        },
-      },
-      change: {
-        $direct: 'chance', // inherit chance
-
-        $method(v, reject, $) { // get all mutations
-          if ($`run neuron.mutate.change.chance`) // check if random change chance is met
-            return $`run neuron.mutate.change.δ`; // return random change value
-
-          return null; // return no change (different from 0 but evaluates the same)
-        },
-
-        chance: { // default: 10
-          // EXPERIMENT config.neuron.mutate.change.chance
-          $value: 10, // chance of a changed neuron (percentage)
-
-          $get(v) { return v / 100; }, // convert to percentage
-
-          $method(v) { return Ξif(v); }, // check if random chance is met
-
-          $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
-        },
-        by: { // default: 0.1
-          // EXPERIMENT config.neuron.mutate.change.by
-          $value: 0.1, // change by
-
-          $method(v) { return Ξsign(0, v) }, // get value in range [-by, by]
-
-          $require(v) { return Number.isFinite(v) && v >= 0; } // must be positive (or zero) and finite
-        },
-      },
-      remove: {
-        $direct: 'chance', // inherit chance
-
-        chance: { // default: 10
-          // EXPERIMENT config.neuron.mutate.remove.chance
-          $value: 10, // chance of a removed neuron (percentage)
-
-          $get(v) { return v / 100; }, // convert to percentage
-
-          $method(v) { return Ξif(v); }, // check if random chance is met
-
-          $require(v) { return Number.isFinite(v) && v > 0; }, // must be positive and finite
-        },
-      },
-    },
-  },
-  synapse: {
-    weight: { // synapse weight
-      $direct: 'range', // inherit range
-
-      range: { // range of synapse weight
-        $get(v, reject, $) { // get range
-          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`;
-
-          return { min, max }; // return range
-        },
-
-        $method(v, reject, $) { // get random value
-          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`;
-
-          return Ξ(min, max); // return random value
-        },
-
-        min: { // default: -1
-          $value: -1, // minimum bias value
-
-          $require: 'finite', // must be finite
-        },
-        max: { // default: 1
-          $value: 1, // maximum bias value
-
-          $require: 'finite', // must be finite
-        },
-      },
-    },
-
-    mutate: {
-      $method(v, reject, $) { // get all mutations
-        const ξs = Object.entries($`parse neuron.mutate`.object); // get all random chances
-
-        const mutations = new Set();
-        for (const [ k, { object: { chance: value } } ] of ξs)
-          if (Ξif(value)) mutations.add(k); // add mutation if random chance is met
-
-        return mutations; // return all mutations
-      },
-
-      add: {
-        $direct: 'chance', // inherit chance
-
-        chance: { // default: 10
-          // EXPERIMENT config.synapse.mutate.add.chance
-          $value: 10, // chance of a added synapse (percentage)
-
-          $get(v) { return v / 100; }, // convert to percentage
-
-          $method(v) { return Ξif(v); }, // check if random chance is met
-
-          $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
-        },
-      },
-      change: {
-        $direct: 'chance', // inherit chance
-
-        $method(v, reject, $) { // get all mutations
-          if ($`run synapse.mutate.change.chance`) // check if random change chance is met
-            return $`run synapse.mutate.change.δ`; // return random change value
-
-          return null; // return no change (different from 0 but evaluates the same)
-        },
-
-        chance: { // default: 10
-          // EXPERIMENT config.synapse.mutate.change.chance
-          $value: 10, // chance of a changed synapse (percentage)
-
-          $get(v) { return v / 100; }, // convert to percentage
-
-          $method(v) { return Ξif(v); }, // check if random chance is met
-
-          $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
-        },
-        δ: { // default: 0.1
-          // EXPERIMENT config.synapse.mutate.change.δ
-          $value: 0.1, // change δ
-
-          $method(v) { return ξsign(0, v) }, // get value in range [-δ, δ]
-
-          $require(v) { return Number.isFinite(v) && v >= 0; } // must be positive (or zero) and finite
-        },
-      },
-      remove: {
-        $direct: 'chance', // inherit chance
-
-        chance: { // default: 10
-          // EXPERIMENT config.synapse.mutate.remove.chance
-          $value: 10, // chance of a removed synapse (percentage)
-
-          $get(v) { return v / 100; }, // convert to percentage
-
-          $method(v) { return Ξif(v); }, // check if random chance is met
-
-          $require(v) { return Number.isFinite(v) && v >= 0 && v <= 100; }, // must be in range [0, 100]
+          chance: { // default: 10
+            // chance of changing a synapse (percentage)
+            [Config.value]: 10,
+            [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
+            [Config.get]: v => v / 100, // convert to percentage
+            [Config.method]: v => Ξif(v), // check if random chance is met
+          },
+          amount: { // default: 0.1
+            // amount of change
+            [Config.value]: 0.1,
+            [Config.require]: v => Number.isFinite(v) && v >= 0, // positive (or zero) and finite
+            [Config.method]: v => Ξsign(0, v), // get value in range [-by, by]
+          },
         },
       },
     },

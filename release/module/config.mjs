@@ -17,6 +17,16 @@
 import RejectionHandler from './debug.mjs';
 
 export default class Config {
+  static direct = '$direct';
+  static value = '$value';
+  static default = '$default';
+  static get = '$get';
+  static set = '$set';
+  static delete = '$delete';
+  static method = '$method';
+  static require = '$require';
+  static disabled = '$disabled';
+
   static #Configure(o, classInstance) {
     const reject = new RejectionHandler('Could not configure object!', o);
 
@@ -143,7 +153,8 @@ export default class Config {
     }
 
     template.require = (function(v, defined = true) {
-      if ('__requirement__' in this) return this.__requirement__.call({}, v, defined, classInstance); // apply requirement if it exists
+      const reject = new RejectionHandler('Could not check if value meets requirements!', v, defined);
+      if ('__requirement__' in this) return this.__requirement__.call({}, v, defined, reject, classInstance); // apply requirement if it exists
       else return true;
     }).bind(template);
     if ('$require' in o) template.__requirement__ = Config.#FormatRequirement(o.$require, reject); // format requirement if it exists
@@ -178,7 +189,7 @@ export default class Config {
             } else reject.handle('Value does not meet requirements!', v, template.require.toString());
           } break;
           case '$default': { // value.__default__
-            if (template.require(v)) template.value.__default__ = v; // set default if it meets requirements
+            if (template.require(v, false)) template.value.__default__ = v; // set default if it meets requirements
             else reject.handle('Default does not meet requirements!', v, template.require.toString());
           } break;
 
@@ -252,12 +263,13 @@ export default class Config {
           case 'primitive': add('value !== Object(value)'); break;
           case 'truthy': add('!!value'); break;
 
+          case 'deleted': add('!defined'); break;
+
           default: reject.handle('Unexpected requirement!', req, cond);
         }
       }
 
       return new Function('value', 'defined', `
-        if (!defined) return true;
         const type = typeof value;
         return ${[ ...comparison ].join(' || ')};
       `);

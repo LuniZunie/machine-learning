@@ -38,6 +38,18 @@ export default Object.freeze({
 
     return id;
   },
+  has(id, label) {
+    const reject = new RejectionHandler('Could not find ID!');
+
+    let group;
+    if (label === undefined) group = ids;
+    else if (typeof label === 'string') {
+      if (!labeledIds.has(label)) reject.handle('Label not found!');
+      group = labeledIds.get(label);
+    } else reject.handle('Invalid label type!');
+
+    return group.has(id);
+  },
   delete(id, label) {
     const reject = new RejectionHandler('Could not delete ID!');
 
