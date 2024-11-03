@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-import { Config, Population } from '../release/machine_learning.mjs';
+import { Config, Population } from '../release/machine_learning_old.mjs';
 
 const Scene = {
   width: 1000,
@@ -109,7 +109,7 @@ class Bird {
   flap() {
     this.#vy -= Math.random() * 5;
   }
-  downflap() {
+  downFlap() {
     this.#vy += Math.random() * 5;
   }
 
@@ -171,7 +171,7 @@ async function Update() {
     nn.input(bird.y / Scene.height - Scene.pipe[1], bird.vy / 10);
     const output = nn.output();
     if (output[0] > 0.5) bird.flap();
-    else bird.downflap();
+    else bird.downFlap();
 
     bird.update();
 

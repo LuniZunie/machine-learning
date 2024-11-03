@@ -14,1774 +14,987 @@
   limitations under the License.
 */
 
+import './module/proto.mjs';
 import './module/utility.mjs';
 import './module/logic_gate.mjs';
 import './module/math.mjs';
 import RejectionHandler from './module/debug.mjs';
-/* import Config from './module/config.mjs'; */
-
-var OUTPUT = false; // EXPERIMENT remove later
+import ID from './module/id.mjs';
 
 const cache = new Map();
 
-Number.prototype.clamp = function(min, max) {
-  return Math.min(Math.max(this, min), max);
-}
-
-Array.prototype.Σ = function() {
-  return Σ(this);
-}
-
-Array.prototype.Ξ = function() {
-  return this[Ξ(this.length) | 0];
-}
-
-Array.prototype.weight = function(m = 1) {
-  const σ = Σ(this);
-  return this.map(v => v / σ * m);
-}
-
-Array.prototype.iweight = function(m = 1) { // inverted weight
-  const σ = Σ(this);
-  return this.map(v => (σ - v) / σ * m);
-}
-
-Array.prototype.fit = function(min = 0, max = 1) {
-  const range = max - min;
-
-  const aMin = Math.min(...this);
-  const aMax = Math.max(...this);
-  const aRange = (aMax - aMin) || 1;
-
-  return this.map(v => (v - aMin) / aRange * range + min);
-}
-
-Array.prototype.scopy = function() { // shallow copy
-  return this.slice();
-}
-
-Set.prototype.scopy = function() { // shallow copy
-  return new Set(this);
-}
-
-Object.scopy = function(o) { // shallow copy
-  return { ...o };
-}
-
-Map.prototype.weight = function(m = 1) {
-  const σ = Σ(this.values());
-  return new Map(Array.from(this, ([ k, v ]) => [ k, v / σ * m ]));
-}
-
-Map.prototype.iweight = function(m = 1) { // inverted weight
-  const σ = Σ(this.values());
-  return new Map(Array.from(this, ([ k, v ]) => [ k, (σ - v) / σ * m ]));
-}
-
-Map.prototype.wΞ = function() {
-  return [ ...this.keys() ][Math.wΞ([ ...this.values() ])];
-}
-
-Map.prototype.iwΞ = function() {
-  return [ ...this.keys() ][Math.iwΞ([ ...this.values() ])];
-}
-
-Map.prototype.scopy = function() { // shallow copy
-  return new Map(this);
-}
-
-class Config {
-  static #default = Object.freeze({
-    population: {
-      size: {
-        value: {
-          _val_: 100,
-
-          $: 'number',
-        },
-
-        $default: 'value',
-      },
-      equality: {
-        value: {
-          _val_: 10 /100,
-
-          $: 'number', $dat: 'percent',
-        },
-
-        $default: 'value',
-      },
-      natural_selection: {
-        dictionary: {
-          _val_: { '1-5': 'sexual', '6-15': 'asexual' },
-
-          $: '!object', $set: function(v, config, population) {
-            const o = {
-              sexual: new Set([ ]),
-              asexual: new Set([ ]),
-
-              map: new Map([ ]),
-            };
-
-            Object.entries(v).forEach(function([ k, v ]) {
-              let s, e;
-              if (typeof k === 'string' && k.includes('-'))
-                [ s, e ] = k.split('-').map(v => +v);
-              else s = e = +k;
-
-              if (s > e) throw new Error('Invalid range');
-
-              for (let i = s; i <= e; i++) {
-                if (o.map.has(i)) throw new Error('Duplicate index');
-                else if (i < 0 || (i | 0) !== i) throw new Error('Indexes must be positive integers');
-                else if (!(v in o) && v !== 'map') throw new Error('Invalid value');
-                else {
-                  o[v].add(i);
-                  o.map.set(i, v);
-                };
-              }
-            });
-
-            config.population.natural_selection.data._val_ = o;
-
-            return v;
-          },
-        },
-        data: {
-          _val_: {
-            sexual: new Set([ ]),
-            asexual: new Set([ 0,1,2,3,4,5,6,7,8,9,10 ]),
-
-            map: new Map([
-              [0,'asexual'],[1,'asexual'],[2,'asexual'],[3,'asexual'],[4,'asexual'],
-              [5,'asexual'],[6,'asexual'],[7,'asexual'],[8,'asexual'],[9,'asexual'],
-              [10,'asexual']
-            ])
-          },
-
-          $: '!object', $set: false, $get: function(o, config, population) {
-            return new Map([ ...o.map ]);
-          },
-        },
-        algorithm: {
-          _val_: 'proportional',
-
-          $: 'defined', $values: new Set([ 'linear', 'proportional', 'weighted', 'random' ]),
-        },
-
-        _exe_(config, population) { //TESTME tied scores accounting
-          if (fø(population)) throw new Error('Configuration has not yet been attached to a population');
-
-          const algorithm = this.algorithm._val_;
-          function GetLeaderboardNetworks(data) {
-            const o = {
-              sexual: new Set(),
-              asexual: new Set(),
-
-              map: new Map(),
-            };
-
-            population.Index.Leaderboard.grouped.forEach(function(set, i) {
-              const k = data.map.get(i);
-              for (const networkIndex of set) {
-                if (k in o) { //i already know k is valid from config.population.natural_selection.dictionary.$set()
-                  o[k].add(networkIndex);
-
-                  o.map.set(networkIndex, k);
-                }
-              }
-            });
-
-            return o;
-          }
-
-          const data = GetLeaderboardNetworks(this.data._val_);
-
-          const scores = population.Index.scores;
-
-          const sexualScores = [ ...data.sexual ].map(i => scores.get(i - 1));
-          const mapScores = new Map([ ...data.map ].map(([ i ]) => [ i, scores.get(i) ]));
-
-          const sexualEquality = sexualScores.fit(config.population.equality.value._val_, 1);
-
-          cache.set('σ', Σ(sexualEquality));
-          cache.set('columnΣ', []);
-
-          const sexualTension2DMap = [ ...data.sexual ].map(() => new Map());
-          for (let x = 0; x < data.sexual.size; x++) {
-            cache.get('columnΣ')[x] = cache.get('σ') - sexualEquality[x];
-            for (let y = 0; y < x; y++) {
-              const δ = sexualEquality[x] - sexualEquality[y];
-              sexualTension2DMap[x].set(y, δ / cache.get('columnΣ')[x]);
-              sexualTension2DMap[y].set(x, δ / cache.get('columnΣ')[y]);
-            }
-          }
-
-          cache.clear();
-
-          function FindPartner(v) {
-            const i = [ ...data.sexual ].indexOf(v);
-
-            return sexualTension2DMap[i].iwΞ();
-          }
-
-          const parentGroups = [];
-          switch (algorithm) {
-            case 'linear': {
-              for (let i = 0; i < config.population.size.value._val_; ) {
-                for (const [ k, dat ] of data.map) {
-                  if (i++ >= config.population.size.value._val_) break;
-
-                  switch (dat) {
-                    case 'sexual': parentGroups.push([ dat, k, FindPartner(k) ]); break;
-                    case 'asexual': parentGroups.push([ dat, k ]); break;
-                  }
-                }
-              }
-            } break;
-            case 'proportional': {
-              const proportions = mapScores.weight(config.population.size.value._val_);
-
-              const remainders = [];
-              proportions.forEach((v, k) => {
-                remainders.push([ v % 1, k ]);
-                v |= 0;
-
-                for (let i = 0; i < v; i++) {
-                  const dat = data.map.get(k);
-                  switch (dat) {
-                    case 'sexual': parentGroups.push([ dat, k, FindPartner(k) ]); break;
-                    case 'asexual': parentGroups.push([ dat, k ]); break;
-                  }
-                }
-              });
-
-              remainders.sort((a, b) => a[0] - b[0]);
-              for (let i = parentGroups.length; i < config.population.size.value._val_; i++) {
-                const k = remainders.shift()[1];
-
-                const dat = data.map.get(k);
-                switch (dat) {
-                  case 'sexual': parentGroups.push([ dat, k, FindPartner(k) ]); break;
-                  case 'asexual': parentGroups.push([ dat, k ]); break;
-                }
-              }
-            } break;
-            case 'weighted': {
-              for (let i = 0; i < config.population.size.value._val_; i++) {
-                const k = mapScores.wΞ();
-
-                const dat = data.map.get(k);
-                switch (dat) {
-                  case 'sexual': parentGroups.push([ dat, k, FindPartner(k) ]); break;
-                  case 'asexual': parentGroups.push([ dat, k ]); break;
-                }
-              }
-            } break;
-            case 'random': {
-              const keys = [ ...data.map.keys() ];
-              for (let i = 0; i < config.population.size.value._val_; i++) {
-                const k = keys.Ξ();
-
-                const dat = data.map.get(k);
-                switch (dat) {
-                  case 'sexual': parentGroups.push([ dat, k, FindPartner(k) ]); break;
-                  case 'asexual': parentGroups.push([ dat, k ]); break;
-                }
-              }
-            } break;
-          }
-
-          return parentGroups;
-        },
-
-        $default: 'dictionary',
-      },
-    },
-    network: {
-      layers: {
-        list: {
-          _val_: [ 1, 1, 1 ],
-
-          $: 'array'
-        },
-
-        $default: 'list',
-      },
-    },
-    neuron: {
-      bias: {
-        range: {
-          min: {
-            value: {
-              _val_: -1,
-
-              $: 'number',
-            },
-          },
-          max: {
-            value: {
-              _val_: 1,
-
-              $: 'number',
-            },
-          },
-
-          _exe_(config, population) {
-            return Ξ(this.min.value._val_, this.max.value._val_);
-          },
-
-          $get(o) {
-            return { min: o.min.value._val_, max: o.max.value._val_ };
-          },
-        },
-        mutate: { //IDEA: allow for radiation mutation (set weight to NaN)
-          edit: {
-            chance: {
-              _val_: 1 / 100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-          },
-          change: {
-            chance: {
-              _val_: 5 / 100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-            amount: {
-              _val_: 0.25,
-              _exe_(config, population) {
-                return Ξsign(0, this._val_);
-              },
-
-              $: 'number',
-            },
-
-            _exe_(config, population) {
-              return Ξif(this.chance._val_) ?
-                Ξsign(0, this.amount._val_) :
-                0;
-            },
-
-            $default: 'chance',
-          },
-
-          _exe_(config, population) {
-            const set = new Set();
-
-            if (Ξif(this.edit.chance._val_)) set.add('edit');
-            if (Ξif(this.change.chance._val_)) set.add('change');
-
-            return set;
-          }
-        },
-
-        $default: 'range',
-      },
-    },
-    path: {
-      weight: {
-        range: {
-          min: {
-            value: {
-              _val_: 0,
-
-              $: 'number'
-            },
-
-            $default: 'value',
-          },
-          max: {
-            value: {
-              _val_: 100,
-
-              $: 'number'
-            },
-
-            $default: 'value',
-          },
-
-          _exe_(config, population) {
-            return Ξ(this.min.value._val_, this.max.value._val_);
-          },
-
-          $get(o) {
-            return { min: o.min.value._val_, max: o.max.value._val_ };
-          }
-        },
-        birth: {
-          form: {
-            chance: {
-              _val_: 50 /100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-
-            $default: 'chance',
-          },
-
-          _exe_(config, population) {
-            const set = new Set();
-
-            if (Ξif(this.form.chance._val_)) set.add('form');
-
-            return set;
-          },
-        },
-        mutate: { //IDEA: allow for radiation mutation (set weight to NaN)
-          form: {
-            chance: {
-              _val_: 2 / 100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-
-            $default: 'chance',
-          },
-          edit: {
-            chance: {
-              _val_: 1 / 100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-
-            $default: 'chance',
-          },
-          change: {
-            chance: {
-              _val_: 25 / 100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-            amount: {
-              _val_: 5,
-              _exe_(config, population) {
-                return Ξsign(0, this._val_);
-              },
-
-              $: 'number',
-            },
-
-            _exe_(config, population) {
-              return Ξif(this.chance._val_) ?
-                Ξsign(0, this.amount._val_) :
-                0;
-            },
-
-            $default: 'chance',
-          },
-          deform: {
-            chance: {
-              _val_: 2 / 100,
-              _exe_(config, population) {
-                return Ξif(this._val_);
-              },
-
-              $: 'number', $dat: 'percent',
-            },
-
-            $default: 'chance',
-          },
-
-          _exe_(config, population) {
-            const set = new Set();
-
-            if (Ξif(this.form.chance._val_)) set.add('form');
-            if (Ξif(this.edit.chance._val_)) set.add('edit');
-            if (Ξif(this.change.chance._val_)) set.add('change');
-            if (Ξif(this.deform.chance._val_)) set.add('deform');
-
-            return set;
-          },
-        },
-
-        $default: 'range',
-      },
-    },
-  });
-
-  #config;
-  #population;
-
-  constructor(config = {}) {
-    const handle = (k, v, o, path) => {
-      function keyCheck(k, o) {
-        return typeof k === 'string' && !k.startsWith('$') && !k.startsWith('_') && k in o;
-      }
-
-      if (typeof v === 'object' && !Array.isArray(v) && v !== Ø) {
-        if ('_val_' in o) this.set(path.join('.'), v);
-        else if (Object.keys(o).some(k2 => keyCheck(k2, v))) {
-          for (const [ k2, v2 ] of Object.entries(v))
-            if (keyCheck(k2, o)) handle(k2, v2, o[k2], [ ...path, k2 ]);
-        } else if ('$default' in o) {
-          k = o.$default;
-          handle(k, v, o[k], [ ...path, k ]);
-        }
-      } else this.set(path.join('.'), v);
-    }
-
-    this.#config = Config.#default;
-    if (typeof config === 'object' && !Array.isArray(config) && config !== Ø)
-      for (const [ k, v ] of Object.entries(config)) handle(k, v, this.#config[k], [ k ]);
-    else throw new Error('Invalid configuration object');
-  }
-
-  #set(o, v) {
-    const config = this;
-    try {
-      o._val_ = structuredClone((function(v) {
-        switch (o.$dat) {
-          case 'percent': return v / 100;
-          default: return v;
-        }
-      })(o.$set instanceof Function ? o.$set(v, config.#config, config.#population) : v));
-    } catch (e) { throw new Error('Error configuring value (must be structured cloneable)'); }
-  }
-
-  set(k, v) {
-    if (!fø(this.#population) && this.#population.running) throw new Error('Cannot configure while population is running');
-
-    if (typeof k !== 'string' || k?.includes('$')) throw new Error('Invalid configuration key');
-
-    const path = k.split('.');
-    let o = this.#config;
-    for (const k2 of path) {
-      if (k2 in o) o = o[k2];
-      else throw new Error('Cannot find configuration key');
-    }
-
-    while ('$default' in o && !('_val_' in o)) o = o[o.$default];
-    if (o.$set === false) throw new Error('Cannot configure this key');
-
-    if ('_val_' in o) {
-      switch (o.$) {
-        case 'defined': {
-          if (o.$values && !o.$values.has(v)) throw new Error('Invalid value configured');
-        } break;
-        case '!object': {
-          if (fØ(v) || typeof v !== 'object') throw new Error('Invalid value type configured');
-        } break;
-        case 'array': {
-          if (!Array.isArray(v)) throw new Error('Invalid value type configured');
-        } break;
-        case Ø:
-        case 'null': {
-          if (!fØ(v)) throw new Error('Invalid value type configured');
-        } break;
-        case ø: break;
-        default: {
-          if (typeof v !== o.$) throw new Error('Invalid value type configured');
-        } break;
-      }
-
-      this.#set(o, v);
-    } else if ('$set' in o) this.#set(o, v);
-    else throw new Error('Cannot configure this key');
-  };
-
-  run(k) {
-    if (typeof k !== 'string' || k?.includes('$')) throw new Error('Invalid configuration key');
-
-    const path = k.split('.');
-    let o = this.#config;
-    for (const k2 of path) {
-      if (k2 in o) o = o[k2];
-      else throw new Error('Cannot find configuration key');
-    }
-
-    while ('$default' in o && !('_exe_' in o)) o = o[o.$default];
-    if (o.$run === false) throw new Error('Cannot execute this key');
-
-    if ('_exe_' in o) return o._exe_(this.#config, this.#population);
-    else throw new Error('Cannot execute this key');
-  };
-
-  #get(o) {
-    const config = this;
-    try {
-      return structuredClone((function(v) {
-        switch (o.$dat) {
-          case 'percent': return o._val_ * 100;
-          default: return o._val_;
-        }
-      })(o.$get instanceof Function ? o.$get(o._val_, config.#config, config.#population) : o._val_));
-    } catch (e) { throw new Error('Error getting value (was not structured cloneable)'); };
-  }
-
-  get(k) {
-    if (typeof k !== 'string' || k?.includes('$')) throw new Error('Invalid configuration key');
-
-    const path = k.split('.');
-    let o = this.#config;
-    for (const k2 of path) {
-      if (k2 in o) o = o[k2];
-      else throw new Error('Cannot find configuration key');
-    }
-
-    while ('$default' in o && !('_val_' in o)) o = o[o.$default];
-    if (o.$get === false) throw new Error('Cannot get this key');
-
-    if ('_val_' in o) return this.#get(o);
-    else if ('$get' in o) return o.$get(o, this.#config, this.#population);
-    else throw new Error('Cannot get this key');
-  };
-
-  simplify() {
-    const simplify = o => {
-      if (typeof o === 'object' && !Array.isArray(o) && !fØ(o)) {
-        if ('_val_' in o) {
-          if (o.$get === false) throw new Error('Cannot get this key');
-          return this.#get(o);
-        } else {
-          const temp = {};
-          let empty = true;
-          for (const [ k, v ] of Object.entries(o))
-            if (!k.startsWith('$') && !k.startsWith('_'))
-              try {
-                temp[k] = simplify(v);
-                empty = false;
-              } catch (e) { }
-
-          if (empty) throw new Error('Empty object');
-          else return temp;
-        }
-      }
-
-      return o;
-    }
-
-    return simplify(this.#config);
-  }
-
-  get population() {
-    return this.#population;
-  }
-
-  set population(v) {
-    if (!(v instanceof Population)) throw new Error('Invalid population object');
-    else if (v.running) throw new Error('Cannot attach running population');
-    else if (v.config instanceof this.constructor && !Object.is(v.config, this)) throw new Error('Configuration mismatch');
-    else this.#population = v;
-  }
-}
-
 class Population {
-  #config;
+  static #config = import('./config/population.mjs');
+
+  #config = Population.#config;
+  #preloaded = { };
+
+  #status = 0; // 0: stopped, 1: idle, 2: running
+
   #networks = new Map();
-  #newNetworks = new Map();
 
-  #running = false;
+  constructor(config) {
+    const reject = new RejectionHandler('Could not construct Population!');
 
-  #hasValidConfig() {
-    if (!(this.#config instanceof Config)) throw new Error('Population configuration not properly attached');
+    this.#Network.prototype.population = this; // set population to network
+
+    if (config)
+      try {
+        this.#config = this.#config(config); // push object values to config
+      } catch (e) { reject.handle(e, config, e); }; // handle error
+
+    this.#Network.prototype.config = this.#config; // set config to network
+
+    this.#UpdatePreloaded(); // update preloaded values
   }
 
-  constructor(config = new Config()) {
-    if (config instanceof Config) {
-      this.#config = config;
-      config.population = this;
-    } else throw new Error('Invalid configuration object');
-  }
-
-  get config() {
-    return this.#config;
-  }
-
+  get config() { return this.#config`parse $`; }
   set config(c) {
-    if (c instanceof Config) {
-      this.#config = c;
-      c.population = this;
-    } else throw new Error('Invalid configuration object');
+    const reject = new RejectionHandler('Could not set Population.config!');
+    try {
+      this.#config = this.#config(c); // push object values to config
+    } catch (e) { reject.handle(e, c, e); }; // handle error
+
+    this.#UpdatePreloaded(); // update preloaded values
   }
 
-  get running() {
-    return this.#running;
+  get preloaded() { return this.#preloaded; }
+
+  #UpdatePreloaded() {
+    this.#preloaded = { // preloaded values
+      size: this.#config`get population.size`, // size of population
+
+      rewardFunction: this.#config`get network.reward.function`, // reward function
+      updateFunction: this.#config`get network.update.function`, // update function
+
+      activationFunction: this.#config`get neuron.activation.function`, // value function
+
+      adapt: this.#config`get mutate.adapt`, // adapt network
+      adaptIterations: this.#config`get mutate.adapt.iterations`, // number of iterations to adapt network
+    };
   }
 
-  get size() {
-    return this.#config.get('population.size');
-  }
+  get size() { return this.#preloaded.size; }
+  get alive() { return this.#networks.filter(network => !network.dead).length; }
+  get dead() { return this.#networks.filter(network => network.dead).length; }
 
-  start() {
-    if (this.#running) throw new Error('Population already running');
+  get status() { return [ 'stopped', 'idle', 'running' ][this.#status]; }
 
-    this.#networks.clear();
-    const size = this.#config.get('population.size');
+  Start(safeMode) { // start population
+    const reject = new RejectionHandler('Could not start Population!');
+    if (safeMode) { // if safe mode
+      if (this.#status !== 0) return false; // if not stopped and is in safe mode return false
+    } else if (this.#status !== 0) reject.handle('Population must be in a stopped state!', this.#status, safeMode); // if not stopped and not safe mode
+
+    for (const network of this.#networks.values()) // iterate through networks
+      network.Deconstruct(); // deconstruct network
+    this.#networks.clear(); // clear networks
+
+    const size = this.#config`get population.size`; // get size
     for (let i = 0; i < size; i++) {
-      const network = new Network(this, i);
-      this.#networks.set(i, network);
-      network.Setup.random();
+      const network = new this.#Network(); // create network
+      this.#networks.set(network.id, network); // set network
+
+      network.Evolve(); // evolve network
     }
 
-    OUTPUT = true; // EXPERIMENT remove later
-
-    this.#running = true;
-
+    this.#status = 2; // set status to running
     return true;
   }
 
-  resume() {
-    if (this.#running) throw new Error('Population already running');
+  Restart(safeMode) { // restart population
+    const reject = new RejectionHandler('Could not restart Population!');
+    if (safeMode) { // if safe mode
+      if (this.#status !== 1) return false; // if not idle and is in safe mode return false
+    } else if (this.#status !== 1) reject.handle('Population must be in an idle state!', this.#status, safeMode); // if not idle and not safe mode
 
-    this.#running = true;
+    this.#status = 0; // set status to stopped
+    return this.Start(safeMode); // start population
+  }
 
+  Resume(safeMode) { // resume population
+    const reject = new RejectionHandler('Could not resume Population!');
+    if (safeMode) { // if safe mode
+      if (this.#status !== 1) return false; // if not idle and is in safe mode return false
+    } else if (this.#status !== 1) reject.handle('Population must be in an idle state!', this.#status, safeMode); // if not idle and not safe mode
+
+    this.#status = 2; // set status to running
     return true;
   }
 
-  restart() {
-    if (!this.#running) throw new Error('Population not running');
+  Pause(safeMode) { // pause population
+    const reject = new RejectionHandler('Could not pause Population!');
+    if (safeMode) { // if safe mode
+      if (this.#status !== 2) return false; // if not running and is in safe mode return false
+    } else if (this.#status !== 2) reject.handle('Population must be in a running state!', this.#status, safeMode); // if not running and not safe mode
 
-    this.#networks.forEach(network => network.reset());
-
+    this.#status = 1; // set status to idle
     return true;
   }
 
-  evolve() {
-    if (!this.#running) throw new Error('Population not running');
-    this.#running = false;
+  Stop(safeMode) { // stop population
+    const reject = new RejectionHandler('Could not stop Population!');
+    if (safeMode) { // if safe mode
+      if (this.#status === 0) return false; // if stopped and is in safe mode return false
+    } else if (this.#status === 0) reject.handle('Population is already stopped!', this.#status, safeMode); // if stopped and not safe mode
 
-    const get = (function(i) { return this.get(i) }).bind(this.Network.Leaderboard.ungrouped);
-
-    this.#newNetworks.clear();
-
-    const parentGroups = this.#config.run('population.natural_selection');
-    for (const parents of parentGroups)
-      this.#Reproduce[parents.shift()](this.#newNetworks.size, ...parents.map(get));
-
-    this.#networks.forEach(network => network.deconstruct());
-    this.#networks.clear();
-
-    this.#newNetworks.forEach((network, i) => this.#networks.set(i, network));
-    this.#newNetworks.clear();
-
-    this.#running = true;
-
+    this.#status = 0; // set status to stopped
     return true;
   }
 
-  stop() {
-    if (!this.#running) throw new Error('Population not running');
+  Evolve(safeMode) { // evolve population
+    const reject = new RejectionHandler('Could not evolve Population!');
+    if (safeMode) { // if safe mode
+      if (this.#status !== 2) return false; // if not running and is in safe mode return false
+    } else if (this.#status !== 2) reject.handle('Population must be in a running state!', this.#status, safeMode); // if not running and not safe mode
 
-    this.#running = false;
+    this.#status = 1; // set status to idle
 
-    return true;
-  }
+    const equality = this.#config`get population.equality`; // get equality value
+    const { maxScore, minScore, scores } = [ ...this.#networks.entries() ]
+      .reduce(function({ maxScore, minScore, scores }, [ id, network ]) { // get scores
+        return {
+          maxScore: Math.max(maxScore, network.score),
+          minScore: Math.min(minScore, network.score),
+          scores: [ ...scores, [ id, network.score ] ]
+        };
+      }, { maxScore: -Infinity, minScore: Infinity, scores: [] }); // get scores
 
-  get Network() {
-    const population = this;
-    return Object.freeze(Object.defineProperties({}, {
-      list: { // list of networks
-        get() {
-          return population.#networks.scopy();
-        }
-      },
-      get: { // get network by index
-        value: function(i) {
-          return population.#networks.get(i);
-        }
-      },
-      has: { // check if network exists
-        value: function(i) {
-          return population.#networks.has(i);
-        }
-      },
-      scores: { // get scores of networks, using network as key
-        get() {
-          return new Map([ ...population.#networks.values() ]
-            .map(network => [ network, network.score ]));
-        }
-      },
-      rankings: { // get rankings of networks, using network as key
-        get() {
-          return new Map([ ...population.#networks.values() ]
-            .sort(iΔ.bind('score'))
-            .map((network, i) => [ network, i ]));
-        }
-      },
-      Leaderboard: { // get leaderboard of networks, using leaderboard index as key
-        value: Object.defineProperties({}, {
-          grouped: { //i networks with tied scores are grouped together (ex. 1. 100, 2. 90, 2. 90, 4. 80)
-            get() {
-              const leaderboard = new Map();
-              let i = 0;
+    const weights = scores.reduce(function(weights, [ id, score ]) { // iterate through scores
+      return weights.set(id, (score - minScore) / (maxScore - minScore) * (1 - equality) + equality); // distribute weights based on score and equality
+    }, new Map());
 
-              cache.delete('lastScore');
-              cache.delete('lastIndex');
-              new Map([ ...population.#networks.values() ]
-                .sort(iΔ.bind('score'))
-                .forEach(network => {
-                  if (network.score === cache.get('lastScore')) leaderboard.get(cache.get('lastIndex')).add(network);
-                  else {
-                    leaderboard.set(i, new Set([ network ]));
-                    cache.set('lastIndex', i);
-                  }
+    const networks = new Map(); // new networks
+    for (let i = this.#config`get population.size`; i > 0; i--) { // iterate through population and existing networks
+      const reference = this.#networks.get(Ξ(...weights)); // get network
 
-                  cache.set('lastScore', network.score);
+      const network = new this.#Network(reference); // create network
+      networks.set(network.id, network); // set network
 
-                  i++;
-                }));
-
-              cache.delete('lastScore');
-
-              return leaderboard;
-            }
-          },
-          ungrouped: { //i networks with tied scores are not grouped (ex. 1. 100, 2. 90, 3. 90, 4. 80)
-            get() {
-              return new Map([ ...population.#networks.values() ]
-                .sort(iΔ.bind('score'))
-                .map((network, i) => [ i, network ]));
-            }
-          },
-        }),
-      },
-      best: { // get best network
-        get() {
-          return [ ...population.#networks.values() ]
-            .reduce((a, b) => a.score > b.score ? a : b);
-        }
-      },
-    }));
-  }
-
-  get NewNetwork() {
-    const population = this;
-    return Object.freeze(Object.defineProperties({}, {
-      list: { // list of new networks
-        get() {
-          return population.#newNetworks.scopy();
-        }
-      },
-      get: { // get new network by index
-        value: function(i) {
-          return population.#newNetworks.get(i);
-        }
-      },
-      has: { // check if new network exists
-        value: function(i) {
-          return population.#newNetworks.has(i);
-        }
-      },
-    }));
-  }
-
-  get Index() {
-    const population = this;
-    return Object.freeze(Object.defineProperties({}, {
-      get: {
-        value: function(network) {
-          return network.index;
-        }
-      },
-      scores: { // get scores of network indices, using index as key
-        get() {
-          return new Map([ ...population.#networks ]
-            .map(([ i, network ]) => [ i, network.score ]));
-        }
-      },
-      rankings: { // get rankings of network indices, using index as key
-        get() {
-          return new Map([ ...population.#networks.values() ]
-            .sort(iΔ.bind('score'))
-            .map((network, i) => [ network.index, i ]));
-        }
-      },
-      Leaderboard: { // get leaderboard of network indices, using leaderboard index as key
-        value: Object.defineProperties({}, {
-          grouped: { //i networks with tied scores are grouped together (ex. 1. 100, 2. 90, 2. 90, 4. 80)
-            get() {
-              const leaderboard = new Map();
-              let i = 0;
-
-              cache.delete('lastScore');
-              cache.delete('lastIndex');
-              new Map([ ...population.#networks.values() ]
-                .sort(iΔ.bind('score'))
-                .forEach(network => {
-                  if (network.score === cache.get('lastScore')) leaderboard.get(cache.get('lastIndex')).add(network.index);
-                  else {
-                    leaderboard.set(i, new Set([ network.index ]));
-                    cache.set('lastIndex', i);
-                  }
-
-                  cache.set('lastScore', network.score);
-
-                  i++;
-                }));
-
-              cache.delete('lastScore');
-
-              return leaderboard;
-            }
-          },
-          ungrouped: { //i networks with tied scores are not grouped (ex. 1. 100, 2. 90, 3. 90, 4. 80)
-            get() {
-              return new Map([ ...population.#networks.values() ]
-                .sort(iΔ.bind('score'))
-                .map((network, i) => [ i, network.index ]));
-            }
-          },
-        }),
-      },
-      best: { // get index of best network
-        get() {
-          return [ ...population.#networks ]
-            .reduce((a, b) => a[1].score > b[1].score ? a : b)[0];
-        }
-      },
-    }));
-  }
-
-  get #Reproduce() { //TESTME
-    const population = this;
-
-    function isReproductionValid(...parents) {
-      population.#hasValidConfig();
-
-      for (const parent of parents)
-        if (!(parent instanceof Network)) throw new Error('Invalid parent network object');
-        else if (!Object.is(parent.population, population)) throw new Error('Parent network not attached to population');
+      network.Evolve(); // evolve network
     }
 
-    return Object.freeze(Object.defineProperties({}, {
-      sexual: {
-        value: function(i, parent1, parent2) {
-          isReproductionValid(parent1, parent2);
+    for (const network of this.#networks.values()) // iterate through networks
+      network.Deconstruct(); // deconstruct network
+    this.#networks = networks; // set networks
 
-          const child = new Network(population, i);
-          population.#newNetworks.set(i, child);
+    this.#status = 2; // set status to running
 
-          const dominance = () => [
-            Ξif() ? Ξ() : -1, // parent1 {dom : rec}
-            Ξif() ? Ξ() : -1, // parent2 {dom : rec}
-          ];
+    return true;
+  }
 
-          child.Setup.custom(function(action, ...args) {
-            switch (action) {
-              case 'neuron': { // args = [ x, y ]
-                const [ x, y ] = args;
+  Input(fn) {
+    const reject = new RejectionHandler('Could not input data!');
+    if (this.#status !== 2) reject.handle('Population must be in a running state!', this.#status); // if not running
+    else if (typeof fn !== 'function') reject.handle('Invalid function!', fn); // if function is invalid
 
-                const [ score1, score2 ] = dominance();
-                const recessive = +(score1 === -1) + +(score2 === -1);
-                if (recessive === 2 || recessive === 0) // xx or XX
-                  return (parent1.Neuron.get(x, y).bias * score1 + parent2.Neuron.get(x, y).bias * score2) / (score1 + score2);
-                else if (score1 === -1) // xX
-                  return parent2.Neuron.get(x, y).bias;
-                else if (score2 === -1) // Xx
-                  return parent1.Neuron.get(x, y).bias;
-                else throw new Error('This should never happen');
-              } break;
-              case 'path': { // args = [ x1, y1, x2, y2 ]
-                const [ x1, y1, x2, y2 ] = args;
+    for (const [ i, network ] of Object.entries([ ...this.#networks.values() ])) // iterate through networks
+      if (!network.dead) // if network is alive
+        network.Input(...fn(i)); // input data
 
-                const [ score1, score2 ] = dominance();
-                const recessive = +(score1 === -1) + +(score2 === -1);
+    return this.alive; // return number of alive networks
+  }
 
-                if (recessive === 2 || recessive === 0) { // xx or XX
-                  const weights = [ score1, score2 ].weight();
+  #Network = class NeuralNetwork {
+    #ID = ID.new('network');
+    #_(reject) {
+      if (!(reject instanceof RejectionHandler)) reject = new RejectionHandler('Invalid access to NeuralNetwork!');
+      if (!ID.has(this.#ID, 'network')) reject.handle('Invalid network ID!', this.#ID); // if network ID is invalid
 
-                  const w1 = parent1.Path.recall(x1, y1, x2, y2)?.weight;
-                  const w2 = parent2.Path.recall(x1, y1, x2, y2)?.weight;
+      return true;
+    }
 
-                  if (fø(w1) || fø(w2)) return Ξif(weights[0]) ? w1 : w2;
-                  else return w1 * weights[0] + w2 * weights[1];
-                } else if (score1 === -1) // xX
-                  return parent2.Path.recall(x1, y1, x2, y2)?.weight;
-                else if (score2 === -1) // Xx
-                  return parent1.Path.recall(x1, y1, x2, y2)?.weight;
-                else throw new Error('This should never happen');
-              } break;
-            }
-          }, { mutate: true });
+    #score = 0;
+    #dead = false;
+
+    #layers = new Map();
+    #neuronMovers = new Map();
+
+    #height;
+
+    #updateMap = new Map(); // map of neurons to update
+
+    #derivativeCache = [];
+    #inputCache = [];
+    constructor(reference) {
+      this.#Neuron.prototype.network = this; // set network to neuron
+      this.#Neuron.prototype.population = this.population; // set population to neuron
+      this.#Neuron.prototype.config = this.config; // set config to neuron
+
+      this.Reset(reference); // reset network
+    }
+
+    Reset(reference) {
+      const reject = new RejectionHandler('Could not reset NeuralNetwork!');
+      this.#_(reject); // check if network is deconstructed
+
+      if ((!reference instanceof this.constructor) && reference !== undefined) reject.handle('Invalid reference!', reference); // if reference is invalid
+
+      const config = this.config;
+      for (const layer of this.#layers.values()) // iterate through layers
+        for (const neuron of layer.values()) // iterate through neurons
+          neuron.Deconstruct(); // deconstruct neuron
+
+      this.#layers.clear(); // clear layers
+      this.#height = 0; // reset height
+
+      if (reference) {
+        for (const [ depth, layer ] of reference.#layers.entries()) { // iterate through layers
+          const newLayer = new Map(); // create new layer
+          for (const [ y, neuron ] of layer.entries()) { // iterate through neurons
+            const newNeuron = new this.#Neuron(depth, y, neuron.bias, this.#neuronMoverCallback); // create neuron
+            newLayer.set(y, newNeuron); // set neuron
+
+            for (const [ y1, synapse ] of neuron.inputSynapses.entries()) // iterate through synapses
+              newNeuron.Connect(y1, synapse.weight); // connect neurons
+          }
+          this.#layers.set(depth, newLayer); // set layer
+
+          this.#height = Math.max(this.#height, layer.size); // set height
         }
-      },
-      asexual: {
-        value: function(i, parent) {
-          isReproductionValid(parent);
 
-          const child = new Network(population, i);
-          population.#newNetworks.set(i, child);
+      } else {
+        if (config`get network.dynamic`) // if network is dynamic
+          for (const k of [ 'input', 'output' ]) { // iterate through input and output
+            const height = config`get network.${k}.size`; // get height
 
-          child.Setup.custom(function(action, ...args) {
-            switch (action) {
-              case 'neuron': { // args = [ x, y ]
-                return parent.Neuron.get(...args).bias;
-              } break;
-              case 'path': { // args = [ x1, y1, x2, y2 ]
-                return parent.Path.recall(...args)?.weight;
-              } break;
-            }
-          }, { mutate: true });
-        }
-      },
-    }));
-  }
-}
+            const layer = new Map(); // create layer
+            for (let y = 0; y < height; y++) // iterate through size
+              layer.set(y, new this.#Neuron(0, y, 0, this.#neuronMoverCallback)); // create neuron with a bias of 0
+            this.#layers.set(k, layer); // set layer
 
-class Network {
-  #population;
-  #index;
+            this.#height = Math.max(this.#height, height); // set height
+          }
+        else { // if network is static
+          const heights = config`get network.layers`; // get heights
+          for (let depth = 0; depth < heights.length; depth++) { // iterate through depths
+            const height = heights[depth]; // get height
 
-  #layers = new Map();
-  #update = new Map();
+            const layer = new Map(); // create layer
+            for (let y = 0; y < height; y++) // iterate through size
+              layer.set(y, new this.#Neuron(depth, y, 0, this.#neuronMoverCallback)); // create neuron with a bias of 0
+            this.#layers.set(depth, layer); // set layer
 
-  #height = 0;
-
-  #score = 0;
-
-  #isValid() {
-    if (!Object.is(this.#population.Network.get(this.#index), this) && !Object.is(this.#population.NewNetwork.get(this.#index), this))
-      throw new Error('Network not properly attached to population');
-  }
-
-  constructor(population, index) {
-    if (!(population instanceof Population)) throw new Error('Invalid population object');
-    this.#population = population;
-
-    this.#index = +index;
-  }
-
-  get population() {
-    this.#isValid();
-
-    return this.#population;
-  }
-
-  get index() {
-    this.#isValid();
-
-    return this.#index;
-  }
-
-  get size() {
-    this.#isValid();
-
-    return this.#layers.size;
-  }
-
-  get height() {
-    this.#isValid();
-
-    return this.#height; // precalculated for optimization
-  }
-
-  get heights() {
-    this.#isValid();
-
-    return [ ...this.#layers.values() ].map(layer => layer.size);
-  }
-
-  get score() {
-    this.#isValid();
-
-    return this.#score;
-  }
-
-  set score(v) {
-    this.#isValid();
-
-    if (typeof v !== 'number') throw new Error('Invalid score value');
-    this.#score = v;
-  }
-
-  get reward() { }
-  set reward(δ) {
-    this.#isValid();
-
-    if (typeof δ !== 'number') throw new Error('Invalid reward value');
-    this.#score += δ;
-  }
-
-  #OptimizeUpdate() {
-    for (const layer of [ ...this.#layers.values() ].reverse())
-      for (const neuron of layer.values())
-        neuron.UpdateOutputConnection();
-
-    for (const layer of this.#layers.values())
-      for (const neuron of layer.values()) {
-        neuron.UpdateInputConnection();
-
-        const connections = [ ...neuron.connections ];
-        for (const y of connections) {
-          if (!this.#update.has(y)) this.#update.set(y, new Set());
-          this.#update.get(y).add(neuron);
+            this.#height = Math.max(this.#height, height); // set height
+          }
         }
       }
-  }
 
-  get Setup() {
-    this.#isValid();
+      this.#CalculateUpdateMap(); // calculate update map
+    }
 
-    const network = this;
-    return Object.freeze(Object.defineProperties({}, {
-      blank: {
-        value() {
-          network.#isValid();
+    get score() { this.#_(); return this.#score; } // get score
+    #Reward(output) { // reward
+      const reject = new RejectionHandler('Could not reward NeuralNetwork!');
+      this.#_(reject); // check if network is deconstructed
+      if (this.#dead) reject.handle('Network is dead!', this.#dead); // if network is dead
 
-          if (!(network.#population.config instanceof Config)) throw new Error('Population configuration not properly attached');
-          if (network.#population.running) throw new Error('Cannot setup layers while population is running');
+      const reward = this.population.preloaded.rewardFunction(output); // calculate reward
+      if (typeof reward !== 'number') reject.handle('Reward function produced an invalid value!', reward); // if reward is invalid
 
-          network.#layers.clear();
-          network.#score = 0;
+      if (this.population.preloaded.adapt) {
+        const s = this.#score + reward; // calculate new score
+        const δ = s - this.#score; // calculate delta (derivative)
+        if (δ < 0 && this.#derivativeCache.last > 0) {
+          output = this.#Adapt(this.#inputCache.last); // adapt network
+          this.#derivativeCache = [ δ ]; // reset cache
 
-          const layers = network.#population.config.get('network.layers.list');
-          for (const size of layers) {
-            if (size > network.#height) network.#height = size;
+          this.#score += this.population.preloaded.rewardFunction(output); // update score
+        } else {
+          if (Math.sign(δ) === Math.sign(this.#derivativeCache.last)) this.#derivativeCache.push(δ); // cache derivative
+          else this.#derivativeCache = [ δ ]; // reset cache
 
-            const layer = new Map();
-            network.#layers.set(network.#layers.size, layer);
-
-            for (let i = 0; i < size; i++)
-              layer.set(i, new Neuron(network, network.#layers.size - 1, i));
-          }
-
-          network.#OptimizeUpdate();
-
-          return true;
+          this.#score = s; // set score
         }
-      },
-      random: {
-        value() {
-          network.#isValid();
+      } else this.#score = s; // set score
 
-          if (!(network.#population.config instanceof Config)) throw new Error('Population configuration not properly attached');
-          if (network.#population.running) throw new Error('Cannot setup layers while population is running');
+      return output; // return output
+    }
 
-          network.#layers.clear();
-          network.#score = 0;
+    get dead() { this.#_(); return this.#dead; } // get dead
+    set dead(v) { // set dead
+      const reject = new RejectionHandler('Could not set NeuralNetwork.dead!');
+      this.#_(reject); // check if network is deconstructed
 
-          const layers = network.#population.config.get('network.layers.list');
-          for (const size of layers) {
-            if (size > network.#height) network.#height = size;
+      if (typeof v !== 'boolean') reject.handle('Dead must be a boolean!', v); // if dead is invalid
 
-            const layer = new Map();
-            network.#layers.set(network.#layers.size, layer);
+      return this.#dead = v; // set dead
+    }
 
-            for (let i = 0; i < size; i++) {
-              layer.set(i, new Neuron(network, network.#layers.size - 1, i, network.#population.config.run('neuron.bias')));
+    get depth() { this.#_(); return this.#layers.size; } // get depth of network
+    get height() { this.#_(); return this.#height; } // get height of network
+    get heights() { // get heights of layers
+      this.#_();
+      return [ ...this.#layers.values().map(layer => layer.size) ] // get heights of layers
+    }
 
-              if (network.#layers.size > 1)
-                for (const [ _, neuron ] of network.#layers.get(network.#layers.size - 2))
-                  if (network.#population.config.run('path.weight.birth.form'))
-                    network.Path.form(
-                      network.#layers.size - 2,
-                      neuron.y,
-                      network.#layers.size - 1,
-                      i,
-                      network.#population.config.run('path.weight')
-                    );
+    Neuron = { // neuron functions
+      get: (depth, y) => this.#_() && this.#layers.get(depth).get(y), // get neuron
+    }
+
+    #neuronMoverCallback = {
+      callback: (function(id, fn) {
+        const reject = new RejectionHandler('Could set neuron mover!');
+        this.#_(reject); // check if network is deconstructed
+
+        if (!ID.has(id, 'neuron')) reject.handle('Invalid neuron ID!', id); // if neuron ID is invalid
+        else if (typeof fn !== 'function') reject.handle('Invalid function!', fn); // if callback is invalid
+
+        this.#neuronMovers.set(id, fn); // set neuron mover
+      }).bind(this),
+      onDeconstruction: (function(id) {
+        this.#_(new RejectionHandler('Could not deconstruct neuron mover!')); // check if network is deconstructed
+
+        this.#neuronMovers.delete(id); // remove neuron mover
+      }).bind(this)
+    }
+
+    Evolve() { // evolve network
+      this.#_(new RejectionHandler('Could not evolve network!')); // check if network is deconstructed
+
+      const config = this.config;
+      const dynamic = config`get network.dynamic`; // get dynamic value
+      if (dynamic) { // if dynamic
+        const layerMutations = config`run mutate.evolve.layer`; // get layer mutations
+        for (let i = Math.min(layerMutations.get('remove'), this.#layers.size - 2); i > 0; i--) // iterate through remove mutations
+          this.#RemoveLayer(Ξ(1, this.#layers.size - 1)); // remove layer
+        for (let i = layerMutations.get('add'); i > 0; i--) // iterate through add mutations
+          this.#AddLayer(); // add layer
+      }
+
+      for (let depth = 0; depth < this.depth; depth++) { // iterate through layers
+        const layer = this.#layers.get(depth); // get layer
+        const lastLayer = this.#layers.get(depth - 1); // get last layer
+
+        if (dynamic && depth > 0 && depth < this.depth - 1) { // if dynamic and not input or output layer
+          const neuronMutations = config`run mutate.evolve.neuron`; // get neuron mutations
+          for (let i = Math.min(neuronMutations.get('remove'), layer.size - 1); i > 0; i--) // iterate through remove mutations
+            this.#RemoveNeuron(layer.depth, Ξ(1, layer.size - 1)); // remove neuron
+          for (let i = neuronMutations.get('add'); i > 0; i--) // iterate through add mutations
+            this.#AddNeuron(layer.depth); // add neuron
+        }
+
+        for (const neuron2 of layer.values()) { // iterate through neurons
+          const neuronMutations = config`run mutate.evolve.neuron`; // get neuron mutations
+          if (neuronMutations.has('change')) // if change mutation
+            neuron2.bias += neuronMutations.get('change'); // change bias
+
+          if (neuron2.isInput) continue; // if input neuron, skip
+          for (const neuron1 of lastLayer.values()) { // iterate through neurons in last layer
+            const synapseMutations = config`run mutate.evolve.synapse`; // get synapse mutations
+            if (neuron1.HasOutputSynapse(neuron2)) { // if synapse exists
+              if (synapseMutations.has('remove')) // if remove mutation
+                neuron1.RemoveOutputSynapse(neuron2); // remove synapse
+              else if (synapseMutations.has('change')) // if change mutation
+                neuron1.inputSynapses.get(neuron2).weight += synapseMutations.get('change'); // change synapse
+            } else if (synapseMutations.has('add')) // if add mutation
+              neuron1.Connect(neuron2.y, config`run synapse.weight.range`); // connect neurons
+          }
+        }
+      }
+    }
+
+    #Adapt({ inputs, changed }) { // adapt network // FIX: Unneeded variable (?)
+      const reject = new RejectionHandler('Could not adapt network!');
+      this.#_(reject); // check if network is deconstructed
+      if (this.#dead) reject.handle('Network is dead!', this.#dead); // if network is dead
+
+      const best = { network: '', reward: -Infinity, output: [] }; // best network
+
+      let reset, recreate;
+      const iterate = this.population.preloaded.adaptIterations; // get number of iterations
+      for (let i = 0; i < iterate; i++) { // iterate through iterations
+        reset = '';
+        recreate = '';
+
+        const layers = this.#layers.entries(); // get layers
+        for (const [ layerK, layer ] of layers) { // iterate through layers
+          const neurons = layer.entries(); // get neurons
+          for (const [ neuronK, neuron ] of neurons) { // iterate through neurons
+            const mutations = this.config`run mutate.evolve.neuron`; // get mutations
+            if (mutations.has('change')) { // if change mutation
+              reset += `layers.get(${layerK}).get(${neuronK}).bias = ${neuron.bias};`; // reset bias
+
+              neuron.bias += mutations.get('change'); // change bias
+              recreate += `layers.get(${layerK}).get(${neuronK}).bias = ${neuron.bias};`; // recreate bias
             }
-          }
 
-          network.#OptimizeUpdate();
+            const synapses = neuron.inputSynapses; // get input synapses
+            for (const [ synapseK, synapse ] of synapses) { // iterate through synapses
+              const mutations = this.config`run mutate.evolve.synapse`; // get mutations
+              if (mutations.has('change')) { // if change mutation
+                reset += `layers.get(${layerK}).get(${neuronK}).inputSynapses.get(${synapseK}).weight = ${synapse.weight};`; // reset weight
 
-          return true;
-        }
-      },
-      custom: { //TESTME network.Setup.custom mutations
-        value(fn, options = {}) {
-          network.#isValid();
-
-          if (!(network.#population.config instanceof Config)) throw new Error('Population configuration not properly attached');
-          if (network.#population.running) throw new Error('Cannot setup layers while population is running');
-          if (typeof fn !== 'function') throw new Error('Invalid setup function');
-          if (typeof options !== 'object' || Array.isArray(options) || fØ(options)) throw new Error('Invalid options object');
-
-          network.#layers.clear();
-          network.#score = 0;
-
-          const layers = network.#population.config.get('network.layers.list');
-          for (const size of layers) {
-            if (size > network.#height) network.#height = size;
-
-            const layer = new Map();
-            network.#layers.set(network.#layers.size, layer);
-
-            for (let i = 0; i < size; i++) {
-              let bias = fn('neuron', network.#layers.size - 1, i); // action, x, y
-              if (FØ(bias)) throw new Error('A neuron must have a bias'); //IDEA allow for undefined bias / neurons that don't exist
-              else {
-                if (options.mutate) {
-                  const mutations = network.#population.config.run('neuron.bias.mutate');
-
-                  if (mutations.has('edit')) bias = network.#population.config.run('neuron.bias');
-                  else if (mutations.has('change')) bias += network.#population.config.run('neuron.bias.mutate.change.amount');
-                }
+                synapse.weight += mutations.get('change'); // change weight
+                recreate += `layers.get(${layerK}).get(${neuronK}).inputSynapses.get(${synapseK}).weight = ${synapse.weight};`; // recreate weight
               }
-
-              layer.set(i, new Neuron(network, network.#layers.size - 1, i, bias));
-
-              if (network.#layers.size > 1)
-                for (const [ _, neuron ] of network.#layers.get(network.#layers.size - 2)) {
-                  let w = fn('path', network.#layers.size - 2, neuron.y, network.#layers.size - 1, i); // action, x1, y1, x2, y2
-                  const mutations = network.#population.config.run('path.weight.mutate');
-                  if (FØ(w)) {
-                    if (mutations.has('form'))
-                      w = network.#population.config.run('path.weight');
-                    else continue;
-                  } else {
-                    if (mutations.has('deform')) continue;
-                    else if (mutations.has('edit')) w = network.#population.config.run('path.weight');
-                    else if (mutations.has('change')) w += network.#population.config.run('path.weight.mutate.change.amount');
-                  }
-
-                  network.Path.form(network.#layers.size - 2, neuron.y, network.#layers.size - 1, i, w); //i only paths to form reach this point
-                }
             }
           }
+        }
 
-          network.#OptimizeUpdate();
+        const updateSet = this.#GetUpdateSet(...changed); // get set of neurons to update
+        for (const neuron of updateSet) // iterate through neurons to update
+          neuron.Update(); // update neuron
+
+        const output = this.output; // get output
+        const reward = this.population.preloaded.rewardFunction(output); // calculate reward
+        if (typeof reward !== 'number') reject.handle('Reward function produced an invalid value!', reward); // if reward is invalid
+        else if (reward > best.reward) {
+          best = { network: recreate, reward, output }; // if reward is better, update best
+
+          if (i === iterate - 1) return output; // if last iteration is best, return output
+        }
+
+        new Function('layers', reset)(this.#layers); // reset network
+      }
+
+      new Function('layers', best.network)(this.#layers); // recreate best network
+      this.#CalculateUpdateMap(); // calculate update map
+
+      return best.output; // return output
+    }
+
+    #AddLayer() { // add layer (append)
+      const reject = new RejectionHandler('Could not add layer!');
+      this.#_(reject); // check if network is deconstructed
+
+      const config = this.config;
+      if (!config`get network.dynamic`) reject.handle('Network is not dynamic!', config`get network.dynamic`); // if network is not dynamic
+
+      const depth = this.#layers.size; // get depth of new layer
+      const height = this.#layers.last.size; // get height of previous layer
+
+      const layer = new Map(); // create layer
+      for (let y = 0; y < height; y++) // iterate through height
+        layer.set(y, new this.#Neuron(depth, y, 0, this.#neuronMoverCallback)); // create neuron with a bias of 0
+
+      this.#layers.set(depth, layer); // set layer
+      for (const [ y, neuron ] of this.#layers.get(depth - 1).entries()) // iterate through neurons in previous layer
+        neuron.Connect(y, 1); // connect neurons
+    }
+
+    #RemoveLayer(depth) { // remove layer
+      const reject = new RejectionHandler('Could not remove layer!');
+      this.#_(reject); // check if network is deconstructed
+
+      const config = this.config;
+      if (!config`get network.dynamic`) reject.handle('Network is not dynamic!', config`get network.dynamic`); // if network is not dynamic
+      else if (depth <= 0 || depth >= this.depth - 1) reject.handle('Invalid depth!', depth); // if depth is invalid
+
+      const layer = this.#layers.get(depth); // get layer
+      for (const neuron of layer.values()) // iterate through neurons in layer
+        neuron.Deconstruct(); // deconstruct neuron
+      this.#layers.delete(depth); // delete layer
+
+      for (let i = depth; i < this.depth; i++) { // iterate through layers after removed layer
+        const layer = this.#layers.get(i + 1); // get layer
+        this.#layers.set(i, layer); // set layer
+        this.#layers.delete(i + 1); // delete layer
+
+        for (const neuron of layer.values()) // iterate through neurons in layer
+          this.#neuronMovers.get(neuron.id)(i); // move neuron
+      }
+
+      this.#height = Math.max(...this.heights); // set height
+    }
+
+    #AddNeuron(depth) { // add neuron (append)
+      const reject = new RejectionHandler('Could not add neuron!');
+      this.#_(reject); // check if network is deconstructed
+
+      const config = this.config;
+      if (!config`get network.dynamic`) reject.handle('Network is not dynamic!', config`get network.dynamic`); // if network is not dynamic
+      else if (depth <= 0 || depth >= this.depth - 1) reject.handle('Invalid depth!', depth); // if depth is invalid
+
+      const layer = this.#layers.get(depth); // get layer
+      const height = layer.size; // get height
+
+      const neuron = new this.#Neuron(depth, height, config`run neuron.bias.range`, this.#neuronMoverCallback); // create neuron
+      layer.set(height, neuron); // set neuron
+
+      this.#height = Math.max(this.#height, height + 1); // set heights
+    }
+
+    #RemoveNeuron(depth, y) { // remove neuron
+      const reject = new RejectionHandler('Could not remove neuron!');
+      this.#_(reject); // check if network is deconstructed
+
+      const config = this.config;
+      if (!config`get network.dynamic`) reject.handle('Network is not dynamic!', config`get network.dynamic`); // if network is not dynamic
+      else if (depth < 0 || depth >= this.depth) reject.handle('Invalid depth!', depth); // if depth is invalid
+      else if (depth === 0) reject.handle('Cannot remove neuron from input layer!', depth); // if depth is input layer
+      else if (depth === this.depth - 1) reject.handle('Cannot remove neuron from output layer!', depth); // if depth is output layer
+
+      const layer = this.#layers.get(depth); // get layer
+      if (!layer.has(y)) reject.handle('Neuron does not exist!', depth, y); // if neuron does not exist
+
+      layer.get(y).Deconstruct(); // deconstruct neuron
+      layer.delete(y); // delete neuron
+
+      for (let i = y; i < layer.size; i++) // iterate through neurons after removed neuron
+        this.#neuronMovers.get(layer.get(i).id)(depth, i); // move neuron
+
+      this.#height = Math.max(...this.heights); // set height
+    }
+
+    #CalculateUpdateMap() { // calculate map of neurons to update
+      this.#_(new RejectionHandler('Could not calculate update map!')); // check if network is deconstructed
+
+      this.#updateMap.clear(); // clear update map
+      for (const layer of [ ...this.#layers.values() ].reverse()) // iterate through layers in reverse
+        for (const neuron of layer.values()) // iterate through neurons in layer
+          neuron.UpdateOutputPath(); // update output paths
+
+      for (const layer of this.#layers.values()) // iterate through layers
+        for (const neuron of layer.values()) {
+          neuron.UpdateInputPath(); // update input paths
+
+          const updateGroups = [ ...neuron.updateGroups ]; // get update groups (groups based on input neurons "y" values)
+          for (const group of updateGroups) { // iterate through update groups
+            if (!this.#updateMap.has(group)) this.#updateMap.set(group, new Set()); // if update group doesn't exist, create it
+            this.#updateMap.get(group).add(neuron); // add neuron to update group
+          }
+        }
+    }
+
+    #GetUpdateSet(...ks) { // get set of neurons to update
+      this.#_(new RejectionHandler('Could not get update set!')); // check if network is deconstructed
+
+      let set = new Set(); // create set
+      for (const k of ks) // iterate through keys
+        set = set.union(this.#updateMap.get(k)); // add neurons to set
+
+      return set; // return set
+    }
+
+    Input(...inputs) {
+      const reject = new RejectionHandler('Could not input data!');
+      this.#_(reject); // check if network is deconstructed
+      if (this.#dead) reject.handle('Network is dead!', this.#dead); // if network
+
+      const inputNeurons = this.#layers.first; // get input neurons
+      if (inputs.length !== inputNeurons.size) reject.handle('Invalid number of inputs!', inputs); // if invalid number of inputs
+
+      const changed = [];
+      for (const i in inputs) {
+        const input = inputs[i]; // get input
+        if (typeof input !== 'number') reject.handle('Invalid input!', input); // if input is invalid
+        else if (input !== inputNeurons.get(i).value) changed.push(i); // if input has changed
+
+        inputNeurons.get(i).value = input; // set input
+      }
+
+      this.#inputCache.push({ inputs, changed }); // cache inputs
+
+      const updateSet = this.#GetUpdateSet(...changed); // get set of neurons to update
+      for (const neuron of updateSet) // iterate through neurons to update
+        neuron.Update(); // update neuron
+
+      const bestOutput = this.#Reward(this.output); // reward network
+      this.population.preloaded.updateFunction(bestOutput); // update function
+    }
+
+    get output() {
+      this.#_();
+      if (this.#dead) new RejectionHandler('Could not get output!').handle('Network is dead!', this.#dead); // if network is dead
+
+      return [ ...this.#layers.last.values() ].map(neuron => neuron.value); // return output values
+    }
+
+    Deconstruct() {
+      this.#_(new RejectionHandler('Could not deconstruct NeuralNetwork!')); // check if network is deconstructed
+
+      ID.delete(this.#ID, 'network'); // delete network ID
+      delete this.#ID; // delete ID
+
+      delete this.#score; // delete score
+
+      for (const layer of this.#layers.values()) // iterate through layers
+        for (const neuron of layer.values()) // iterate through neurons
+          neuron.Deconstruct(); // deconstruct neuron
+      delete this.#layers; // delete layers
+
+      delete this.#neuronMovers; // delete neuron movers
+
+      delete this.#height; // delete height
+
+      delete this.#updateMap; // delete update map
+
+      delete this.#derivativeCache; // delete derivative cache
+      delete this.#inputCache; // delete input cache
+    }
+    #Neuron = class Neuron {
+      #id = ID.new('neuron');
+      #_(reject) {
+        if (!(reject instanceof RejectionHandler)) reject = new RejectionHandler('Invalid access to Neuron!');
+        if (this.#id === undefined) reject.handle('Neuron is deconstructed!');
+
+        return true;
+      }
+
+      #onDeconstruction; // on deconstruction callback
+
+      #depth; // depth of neuron
+      #y; // y value of neuron
+
+      #bias = NaN; // bias of neuron
+      #value = NaN; // value of neuron
+
+      #updateFunction; // update function of neuron
+
+      #synapses = {
+        input: new Map(), // synapses of input neurons (key: input neuron, value: synapse)
+        output: new Map() // synapses of output neurons (key: output neuron, value: synapse)
+      }; // synapses of neuron
+
+      #pointsOnInputPath = new Set(); // point on input paths
+      #pointsOnOutputPath = new Set(); // point on output paths
+
+      constructor(depth, y, bias = NaN, { callback, onDeconstruction }) {
+        this.#Synapse.prototype.neuron = this; // set neuron to synapse
+        this.#Synapse.prototype.network = this.network; // set network to synapse
+        this.#Synapse.prototype.population = this.population; // set population to synapse
+        this.#Synapse.prototype.config = this.config; // set config to synapse
+
+        const reject = new RejectionHandler('Could not construct Neuron!');
+        if (typeof depth !== 'number' || typeof y !== 'number') reject.handle('Invalid depth or y value!', depth, y); // if depth or y value is invalid
+        else if (this.network.Neuron.get(depth, y)) reject.handle('Neuron already exists!', depth, y); // if neuron already exists
+        else if (typeof bias !== 'number') reject.handle('Invalid bias!', bias); // if bias is invalid
+        else if (callback !== 'function') reject.handle('Invalid callback!', callback); // if callback is invalid
+
+        this.#depth = depth; // set depth
+        this.#y = y; // set y value
+
+        const { min, max } = this.config`get neuron.bias.range`; // get bias range
+        this.#bias = (+bias).clamp(min, max); // set bias
+
+        this.UpdateUpdateFunction(); // update update function
+
+        const neuron = this;
+        callback((function(newDepth = this.#depth, newY = this.#y) { // move neuron
+          const reject = new RejectionHandler('Could not move Neuron!');
+          if (typeof newDepth !== 'number' || typeof newY !== 'number') reject.handle('Invalid depth or y value!', newDepth, newY); // if depth or y value is invalid
+          else if (this.network.Neuron.get(newDepth, newY)) reject.handle('Neuron already exists!', newDepth, newY); // if neuron already exists
+
+          this.#depth = newDepth; // set depth
+          this.#y = newY; // set y value
+        }).bind(neuron));
+
+        this.#onDeconstruction = onDeconstruction; // set on deconstruction callback
+      }
+
+      get id() { this.#_(); return this.#id; }
+
+      get depth() { this.#_(); return this.#depth; } // get depth
+      get isInput() { this.#_(); return this.#depth === 0; } // get if neuron is input neuron
+      get isOutput() { this.#_(); return this.#depth === this.network.depth - 1; } // get if neuron is output neuron
+
+      get y() { this.#_(); return this.#y; } // get y value
+
+      get bias() { this.#_(); return this.#bias; } // get bias
+      set bias(b) { // set bias
+        const reject = new RejectionHandler('Could not set Neuron.bias!');
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (typeof b !== 'number') reject.handle('Bias must be a number!', b); // if bias is invalid
+
+        const { min, max } = this.config`get neuron.bias.range`; // get bias range
+        this.#bias = (+b).clamp(min, max); // set bias
+
+        this.UpdateUpdateFunction(); // update update function
+
+        return this.#bias; // return bias
+      }
+
+      get value() { return this.#value; } // get value
+      set value(v) { // set value
+        const reject = new RejectionHandler('Could not set Neuron.value!');
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (typeof v !== 'number') reject.handle('Value must be a number!', v); // if value is invalid
+
+        return this.#value = v; // set value
+      }
+
+      UpdateUpdateFunction() { // update the update function
+        this.#_(new RejectionHandler('Could not update Neuron!')); // check if neuron is deconstructed
+
+        const neurons = new Set(); // create set of neurons
+        let i = 0;
+        for (const synapse of this.#synapses.input.values()) // iterate through input synapses
+          neurons.add(`neurons[${i++}].value * ${synapse.weight}`); // add input synapse to set
+
+        this.#updateFunction = new Function('neurons', 'activationFn' `
+          return activationFn(${neurons.join(' + ')}, ${this.#bias});
+        `).bind({}, this.#synapses.input.keys()); // return update function
+      }
+
+      Update() { // update neuron
+        this.#_(new RejectionHandler('Could not update Neuron!')); // check if neuron is deconstructed
+        this.#value = this.#updateFunction(this.network.preloaded.activationFunction); // update value
+      }
+
+      get inputs() { // get input synapses
+        this.#_(); // check if neuron is deconstructed
+        return [ ...this.#synapses.input.keys() ].map(neuron => neuron.id); // get input synapses as array of neuron IDs
+      }
+      get outputs() { // get output synapses
+        this.#_(); // check if neuron is deconstructed
+        return [ ...this.#synapses.output.keys() ].map(neuron => neuron.id); // get output synapses as array of neuron IDs
+      }
+
+      get inputSynapses() { this.#_(); return this.#synapses.input.entries(); } // get input synapses
+      get outputSynapses() { this.#_(); return this.#synapses.output.entries(); } // get output synapses
+
+      HasInputSynapse(neuron) {
+        this.#_(new RejectionHandler('Could not check for synapse!')); // check if neuron is deconstructed
+        return this.#synapses.input.has(neuron);
+      } // check if neuron has input synapse with another neuron
+      HasOutputSynapse(neuron) { // check if neuron has output synapse with another neuron
+        this.#_(new RejectionHandler('Could not check for synapse!')); // check if neuron is deconstructed
+        return this.#synapses.output.has(neuron);
+      }
+      HasSynapse(neuron) {
+        this.#_(new RejectionHandler('Could not check for synapse!')); // check if neuron is deconstructed
+        return this.#synapses.input.has(neuron) || this.#synapses.output.has(neuron); // check if neuron has synapse with another neuron
+      }
+
+      RemoveInputSynapse(neuron) {
+        const reject = new RejectionHandler('Could not remove input synapse!', this.#depth, this.#y, neuron);
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (!this.#synapses.input.has(neuron))
+          reject.handle('Synapse does not exist!'); // if synapse does not exist
+
+        let exists;
+        try {
+          this.#synapses.input.get(neuron).id; // get synapse ID to check if synapse is deconstructed
+          exists = true;
+        } catch (e) { this.#synapses.input.delete(neuron); } // if synapse is deconstructed, delete synapse
+
+        if (exists) reject.handle('Synapse not deconstructed!'); // if synapse still exists
+        this.UpdateUpdateFunction(); // update update function
+      }
+
+      RemoveOutputSynapse(neuron) {
+        const reject = new RejectionHandler('Could not remove output synapse!', this.#depth, this.#y, neuron);
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (!this.#synapses.output.has(neuron))
+          reject.handle('Synapse does not exist!'); // if synapse does not exist
+
+        let exists;
+        try {
+          this.#synapses.output.get(neuron).id; // get synapse ID to check if synapse is deconstructed
+          exists = true;
+        } catch (e) { this.#synapses.output.delete(neuron); } // if synapse is deconstructed, delete synapse
+
+        if (exists) reject.handle('Synapse not deconstructed!'); // if synapse still exists
+        this.UpdateUpdateFunction(); // update update function
+      }
+
+      Connect(y, weight) {
+        const reject = new RejectionHandler('Could not connect Neuron!');
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (typeof y !== 'number')
+          reject.handle('Invalid y value!', y); // if y value is invalid
+        else if (this.isOutput)
+          reject.handle('Output neurons cannot connect to other neurons!', this.#depth, y); // if neuron is output neuron
+        else if (this.network.heights[this.#depth + 1] >= y)
+          reject.handle('No neuron exists at y value!', this.#depth, this.network.heights[this.#depth + 1], y); // if no neuron exists at y value
+
+        const neuron = this.network.Neuron.get(this.#depth + 1, y); // get neuron
+        if (this.#synapses.output.has(neuron))
+          reject.handle('Connection already exists!', this.#depth, y); // if connection already exists
+
+        const synapse = new this.#Synapse(this, neuron, weight); // create synapse
+        this.#synapses.output.set(neuron, synapse); // set output synapse
+
+        neuron.ReceiveConnection(this.#y); // receive connection
+
+        this.UpdateUpdateFunction(); // update update function
+      }
+
+      ReceiveConnection(synapse) {
+        const reject = new RejectionHandler('Could not receive connection!');
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (!(synapse instanceof this.#Synapse))
+          reject.handle('Invalid synapse!', synapse); // if synapse is invalid
+        else if (this.isInput)
+          reject.handle('Input neurons cannot receive connections!', this.#depth, this.#y); // if neuron is input neuron
+
+        const input = synapse.input; // get input neuron
+        if (this.#synapses.input.has(input))
+          reject.handle('Connection already received!', this.#depth, input); // if connection already exists
+        else if (!neuron.hasOutputSynapse(this))
+          reject.handle('Connection does not exist!', this.#depth, y); // if connection does not exist
+
+        this.#synapses.input.set(input, synapse); // set input synapse
+
+        this.UpdateUpdateFunction(); // update update function
+      }
+
+      Disconnect(y) {
+        const reject = new RejectionHandler('Could not disconnect Neuron!');
+        this.#_(reject); // check if neuron is deconstructed
+
+        if (typeof y !== 'number')
+          reject.handle('Invalid y value!', y); // if y value is invalid
+        else if (this.isInput)
+          reject.handle('Input neurons cannot disconnect from other neurons!', this.#depth, y); // if neuron is input neuron
+        else if (this.network.heights[this.#depth + 1] >= y)
+          reject.handle('No neuron exists at y value!', this.#depth, this.network.heights[this.#depth + 1], y); // if no neuron exists at y value
+
+        const neuron = this.network.Neuron.get(this.#depth + 1, y); // get next neuron
+        if (!this.#synapses.output.has(neuron))
+          reject.handle('Connection does not exist!', this.#depth, y); // if connection does not exist
+
+        this.#synapses.output.get(neuron).Deconstruct(); // deconstruct synapse
+      }
+
+      get pointOnInputPath() { this.#_(); return this.#pointsOnInputPath.size > 0; } // get point on input path
+      get inputPaths() { this.#_(); return this.#pointsOnInputPath.copy(); } // get input paths
+
+      get pointOnOutputPath() { this.#_(); return this.#pointsOnOutputPath.size > 0; } // get point on output path
+      get outputPaths() { this.#_(); return this.#pointsOnOutputPath.copy(); } // get output paths
+
+      get updateGroups() { // get update groups
+        this.#_(new RejectionHandler('Could not get update groups!')); // check if neuron is deconstructed
+
+        if (this.#pointsOnOutputPath.size === 0) return new Set(); // if not connected to any output neurons, don't update
+        else return this.#pointsOnInputPath.copy(); // update based on what input neurons are connected to
+      }
+
+      UpdateInputPath() { // check if neuron is a point on input path
+        this.#_(new RejectionHandler('Could not update input path!')); // check if neuron is deconstructed
+
+        this.#pointsOnInputPath.clear(); // clear input paths
+        if (this.isInput) this.#pointsOnInputPath.add(this.#y); // if neuron is input neuron, add to input paths
+        else for (const [ neuron ] of this.#synapses.input) // iterate through input synapses
+          this.#pointsOnInputPath = this.#pointsOnInputPath.union(neuron.inputPaths); // add input paths
+
+        return this.#pointsOnInputPath.copy(); // return input paths
+      }
+
+      UpdateOutputPath() { // check if neuron is a point on output path
+        this.#_(new RejectionHandler('Could not update output path!')); // check if neuron is deconstructed
+
+        this.#pointsOnOutputPath.clear(); // clear output paths
+        if (this.isOutput) this.#pointsOnOutputPath.add(this.#y); // if neuron is output neuron, add to output paths
+        else for (const [ neuron ] of this.#synapses.output) // iterate through output synapses
+          this.#pointsOnOutputPath = this.#pointsOnOutputPath.union(neuron.outputPaths); // add output paths
+
+        return this.#pointsOnOutputPath.copy(); // return output paths
+      }
+
+      Deconstruct() { // deconstruct neuron
+        this.#_(new RejectionHandler('Could not deconstruct Neuron!')); // check if neuron is deconstructed
+
+        ID.delete(this.#id, 'neuron'); // delete ID
+
+        this.#onDeconstruction(this.#id); // run on deconstruction callback
+        delete this.#onDeconstruction; // delete on deconstruction callback
+
+        delete this.#id; // delete ID
+
+        delete this.#depth; // delete depth
+        delete this.#y; // delete y value
+
+        delete this.#bias; // delete bias
+        delete this.#value; // delete value
+
+        delete this.#updateFunction; // delete update function
+
+        for (const synapse of this.#synapses.input.values()) // iterate through input synapses
+          synapse.Deconstruct(); // deconstruct input synapse
+        delete this.#synapses.input; // delete input synapses
+
+        for (const synapse of this.#synapses.output.values()) // iterate through output synapses
+          synapse.Deconstruct(); // deconstruct output synapse
+        delete this.#synapses.output; // delete output synapses
+
+        delete this.#pointsOnInputPath; // delete input paths
+        delete this.#pointsOnOutputPath; // delete output paths
+
+        return true; // return true
+      }
+
+      #Synapse = class Synapse {
+        #id = ID.new('synapse');
+        #_(reject) {
+          if (!(reject instanceof RejectionHandler)) reject = new RejectionHandler('Invalid access to Synapse!');
+          if (this.#id === undefined) reject.handle('Synapse is deconstructed!');
 
           return true;
         }
-      }
-    }));
-  }
 
-  get Neuron() {
-    this.#isValid();
+        #input; // input neuron
+        #output; // output neuron
 
-    const network = this;
-    return Object.freeze(Object.defineProperties({}, {
-      list: {
-        get() {
-          return new Map([ ...network.#layers.values() ]
-            .flatMap(layer => [ ...layer.values() ])
-            .map(neuron => [ `${neuron.x},${neuron.y}`, neuron ]));
-        }
-      },
-      get: {
-        value: function(x, y) {
-          return network.#layers.get(x)?.get(y);
-        }
-      },
-      set: {
-        value: function(x, y, bias) {
-          if (network.#layers.has(x) && network.#layers.get(x).has(y))
-            network.#layers.get(x).get(y).bias = bias;
-        }
-      },
-      change: {
-        value: function(x, y, δ) {
-          if (network.#layers.has(x) && network.#layers.get(x).has(y))
-            network.#layers.get(x).get(y).bias += δ;
-        }
-      },
-    }));
-  }
+        #weight; // weight of synapse
 
-  #neuronsForPath(x1, y1, x2, y2) {
-    if (
-      x1 === x2 ||
-      x1 < 0 || x1 >= this.#layers.size ||
-      x2 < 0 || x2 >= this.#layers.size ||
-      y1 < 0 || y1 >= this.#layers.get(x1).size ||
-      y2 < 0 || y2 >= this.#layers.get(x2).size
-    ) throw new Error('Invalid path');
-    else if (x1 > x2) {
-      const temp = x1;
-      x1 = x2;
-      x2 = temp;
+        constructor(input, output, weight = NaN) {
+          this.#input = input; // set input neuron
+          this.#output = output; // set output neuron
+
+          const reject = new RejectionHandler('Could not construct Synapse!');
+          if (!(input instanceof this.neuron.constructor))
+            reject.handle('Invalid input neuron!', input); // if input neuron is invalid
+          else if (!(output instanceof this.neuron.constructor))
+            reject.handle('Invalid output neuron!', output); // if output neuron is invalid
+          else if (input.hasOutputSynapse(output))
+            reject.handle('Synapse already exists!', input, output); // if synapse already exists
+          else if (typeof weight !== 'number')
+            reject.handle('Weight must be a number!', weight); // if weight is invalid
+
+          const { min, max } = this.config`get synapse.weight.range`; // get weight range
+          this.#weight = (+weight).clamp(min, max); // set weight
+        }
+
+        get id() { this.#_(); return this.#id; }
+
+        get input() { this.#_(); return this.#input; } // get input neuron
+        get output() { this.#_(); return this.#output; } // get output neuron
+
+        get weight() { this.#_(); return this.#weight; } // get weight
+        set weight(w) { // set weight
+          const reject = new RejectionHandler('Could not set Synapse.weight!');
+          this.#_(reject); // check if synapse is deconstructed
+
+          if (typeof w !== 'number') reject.handle('Weight must be a number!', w); // if weight is invalid
+
+          cache.set('weight', this.#weight); // cache weight
+          const { min, max } = this.config`get synapse.weight.range`; // get weight range
+          this.#weight = (+w).clamp(min, max); // set weight
+
+          if (w !== cache.get('weight')) { // if weight has changed
+            this.input.UpdateUpdateFunction(); // update input neuron update function
+            this.output.UpdateUpdateFunction(); // update output neuron update function
+          }
+
+          cache.delete('weight'); // delete weight cache
+          return this.#weight; // return weight
+        }
+
+        Deconstruct() { // deconstruct synapse
+          this.#_(new RejectionHandler('Could not deconstruct Synapse!')); // check if synapse is deconstructed
+
+          ID.delete(this.#id, 'synapse'); // delete ID
+          delete this.#id; // delete ID
+
+          this.#input.RemoveOutputSynapse(this.#output); // remove output synapse
+          delete this.#input; // delete input neuron
+
+          this.#output.RemoveInputSynapse(this.#input); // remove input synapse
+          delete this.#output; // delete output neuron
+
+          delete this.#weight; // delete weight
+
+          return true; // return true
+        }
+      };
     }
-
-    if (x1 + 1 !== x2) throw new Error('Invalid path');
-    else return [ this.#layers.get(x1).get(y1), this.#layers.get(x2).get(y2) ];
-  }
-
-  #path = {
-    list: new Map(),
-    remember(from, to, path) {
-      this.list.set(`${from.ID}-${to.ID}`, path);
-    },
-    forget(from, to) {
-      this.list.delete(`${from.ID}-${to.ID}`);
-    },
-    exists(from, to) {
-      return this.list.has(`${from.ID}-${to.ID}`);
-    },
-    recall(from, to) {
-      return this.list.get(`${from.ID}-${to.ID}`);
-    },
-  };
-
-  get Path() {
-    this.#isValid();
-
-    const network = this;
-    return Object.freeze(Object.defineProperties({}, {
-      list: {
-        get() {
-          return [ ...network.#path.list.values() ]
-            .map(path => ({
-              from: { x: path.from.x, y: path.from.y },
-              to: { x: path.to.x, y: path.to.y },
-            }));
-        }
-      },
-      exists: {
-        value(...args) {
-          network.#isValid();
-
-          let from, to;
-          if (args.length === 2) [ from, to ] = args;
-          else if (args.length === 4) [ from, to ] = network.#neuronsForPath(...args);
-
-          return network.#path.exists(from, to);
-        }
-      },
-      recall: {
-        value(...args) {
-          network.#isValid();
-
-          let from, to;
-          if (args.length === 2) [ from, to ] = args;
-          else if (args.length === 4) [ from, to ] = network.#neuronsForPath(...args);
-
-          return network.#path.recall(from, to);
-        }
-      },
-      form: {
-        value(x1, y1, x2, y2, weight) {
-          network.#isValid();
-
-          const [ from, to ] = network.#neuronsForPath(x1, y1, x2, y2);
-          if (network.#path.exists(from, to)) throw new Error('Path already exists');
-
-          try {
-            const path = new Path(network, from, to, weight);
-            network.#path.remember(from, to, path);
-
-            from.To.add(path);
-            to.From.add(path);
-
-            to.update();
-
-            return path;
-          } catch (e) { throw new Error(e); }
-        }
-      },
-      edit: {
-        value(x1, y1, x2, y2, weight) {
-          network.#isValid();
-
-          const [ from, to ] = network.#neuronsForPath(x1, y1, x2, y2);
-          if (!network.#path.exists(from, to)) throw new Error('Path does not exist');
-
-          try {
-            network.#path.recall(from, to).weight = weight;
-            to.update();
-
-            return true;
-          } catch (e) { throw new Error(e); }
-        }
-      },
-      change: {
-        value(x1, y1, x2, y2, δ) {
-          network.#isValid();
-
-          const [ from, to ] = network.#neuronsForPath(x1, y1, x2, y2);
-          if (!network.#path.exists(from, to)) throw new Error('Path does not exist');
-
-          try {
-            network.#path.recall(from, to).weight += δ;
-            to.update();
-
-            return true;
-          } catch (e) { throw new Error(e); }
-        }
-      },
-      deform: {
-        value(x1, y1, x2, y2) {
-          network.#isValid();
-
-          const [ from, to ] = network.#neuronsForPath(x1, y1, x2, y2);
-          if (!network.#path.exists(from, to)) throw new Error('Path does not exist');
-
-          try {
-            network.#path.recall(from, to).deconstruct();
-            network.#path.forget(from, to);
-
-            from.To.remove(to);
-            to.From.remove(from);
-
-            to.update();
-
-            return true;
-          } catch (e) { throw new Error(e); }
-        }
-      },
-    }));
-  }
-
-  input(...inputs) {
-    this.#isValid();
-
-    if (inputs.length !== this.#layers.get(0).size) throw new Error('Invalid input size');
-
-    for (const [ i, neuron ] of this.#layers.get(0))
-      neuron.value = inputs[i];
-  }
-
-  output() {
-    this.#isValid();
-
-    const output = [];
-    for (const [ _, neuron ] of this.#layers.get(this.#layers.size - 1))
-      output.push(neuron.value);
-
-    return output;
-  }
-
-  deconstruct() {
-    this.#isValid();
-
-    for (const [ x1, layer ] of this.#layers)
-      for (const [ y1, neuron ] of layer)
-        neuron.deconstruct();
-
-    this.#population = ø;
-    this.#index = ø;
-
-    this.#layers.clear();
-
-    this.#score = 0;
   }
 }
-
-class Neuron {
-  static #ids = new Set();
-  static #generateID() {
-    let id;
-    do
-      id = crypto.getRandomValues(new Uint32Array(1))[0];
-    while (Neuron.#ids.has(id));
-
-    Neuron.#ids.add(id);
-    return id;
-  }
-  static #deleteID(id) {
-    Neuron.#ids.delete(id);
-  }
-
-  #id = Neuron.#generateID();
-
-  #network;
-  #x;
-  #y;
-
-  #connectedToOutput = false;
-  #inputConnections = new Set();
-
-  #from = new Map();
-  #to = new Map();
-
-  #bias = NaN;
-  #value = NaN;
-
-  #isValid() {
-    if (fø(this.#id) || !Object.is(this.#network.Neuron.get(this.#x, this.#y), this))
-      throw new Error('Neuron not properly attached to network');
-  }
-
-  constructor(network, x, y, bias = NaN) {
-    if (!(network instanceof Network)) throw new Error('Invalid network');
-    if (!fø(network.Neuron.get(x, y))) throw new Error('Neuron already exists');
-
-    this.#network = network;
-    this.#x = +x;
-    this.#y = +y;
-
-    const { min, max } = this.#network.population.config.get('neuron.bias');
-    this.#bias = (+bias).clamp(min, max);
-  }
-
-  get network() {
-    this.#isValid();
-
-    return this.#network;
-  }
-
-  get x() {
-    this.#isValid();
-
-    return this.#x;
-  }
-
-  get y() {
-    this.#isValid();
-
-    return this.#y;
-  }
-
-  get connectedToOutput() {
-    this.#isValid();
-
-    return this.#connectedToOutput;
-  }
-
-  get connectedToInput() {
-    this.#isValid();
-
-    return this.#inputConnections.size > 0;
-  }
-
-  get inputConnections() {
-    this.#isValid();
-
-    return new Set(this.#inputConnections);
-  }
-
-  get connections() {
-    this.#isValid();
-
-    return this.#connectedToOutput ?
-      new Set(this.#inputConnections) :
-      new Set();
-  }
-
-  updates = 0; // EXPERIMENT remove later
-  UpdateOutputConnection() {
-    this.#isValid();
-
-    this.#connectedToOutput = false;
-    if (this.#x === this.#network.size - 1) this.#connectedToOutput = true;
-    else for (const [ neuron ] of this.#to)
-      if (neuron.connectedToOutput) {
-        this.#connectedToOutput = true;
-        break;
-      }
-
-    return this.#connectedToOutput;
-  }
-
-  UpdateInputConnection() {
-    this.#isValid();
-
-    this.updates = 0; // EXPERIMENT remove later
-    if (this.#x === 0) this.updates = 1; // EXPERIMENT remove later
-    else for (const [ neuron ] of this.#from) this.updates += neuron.updates; // EXPERIMENT remove later
-
-    this.#inputConnections.clear();
-    if (this.#x === 0) {
-      this.#inputConnections = new Set([ this.#y ]);
-      return new Set([ this.#y ]);
-    }
-
-    let set = new Set();
-    for (const [ neuron ] of this.#from)
-      set = set.union(neuron.inputConnections);
-
-    this.#inputConnections = set;
-    return new Set(set);
-  }
-
-  get ID() {
-    this.#isValid();
-
-    return this.#id;
-  }
-
-  get bias() {
-    this.#isValid();
-
-    return this.#bias;
-  }
-
-  set bias(b) {
-    this.#isValid();
-
-    const { min, max } = this.#network.population.config.get('neuron.bias');
-    this.#bias = (+b).clamp(min, max);
-    this.update();
-  }
-
-  update() {
-    this.#isValid();
-
-    if (OUTPUT) console.count(); // EXPERIMENT remove later
-
-    let σ = 0;
-    for (const [ neuron, path ] of this.#from) σ += neuron.value * path.weight;
-    this.value = 1 / (1 + Math.exp(-(σ + this.#bias)));
-  }
-
-  get value() {
-    this.#isValid();
-
-    return this.#value;
-  }
-
-  set value(v) {
-    this.#isValid();
-
-    if (this.#x === 0) console.count(); // EXPERIMENT remove later
-
-    this.#value = v;
-    for (const [ neuron ] of this.#to) neuron.update();
-  }
-
-  #isPathable(neuron, d) {
-    return neuron instanceof Neuron &&
-      Object.is(neuron.#network, this.#network) &&
-      (
-        (fø(d) && (neuron.#x === this.#x + 1 || neuron.#x === this.#x - 1)) ||
-        (d === 1 && neuron.#x === this.#x + 1) ||
-        (d === -1 && neuron.#x === this.#x - 1)
-      );
-  }
-
-  get From() {
-    const neuron = this;
-    return Object.freeze(Object.defineProperties({}, {
-      add: {
-        value: function(path) {
-          neuron.#isValid();
-
-          if (path.to.ID !== neuron.ID) throw new Error('Path not properly attached to neuron');
-          if (!neuron.#isPathable(path.from, -1)) throw new Error('Invalid path');
-
-          neuron.#from.set(path.from, path);
-        }
-      },
-      remove: {
-        value: function(from) {
-          neuron.#isValid();
-
-          neuron.#from.delete(from);
-        }
-      },
-    }));
-  }
-
-  get To() {
-    const neuron = this;
-    return Object.freeze(Object.defineProperties({}, {
-      add: {
-        value: function(path) {
-          neuron.#isValid();
-
-          if (path.from.ID !== neuron.ID) throw new Error('Path not properly attached to neuron');
-          if (!neuron.#isPathable(path.to, 1)) throw new Error('Invalid path');
-
-          neuron.#to.set(path.to, path);
-        }
-      },
-      remove: {
-        value: function(to) {
-          neuron.#isValid();
-
-          neuron.#to.delete(to);
-        }
-      },
-    }));
-  }
-
-  deconstruct() {
-    this.#isValid();
-
-    for (const [ neuron ] of this.#from)
-      this.network.Path.deform(neuron.x, neuron.y, this.#x, this.#y);
-
-    for (const [ neuron ] of this.#to)
-      this.network.Path.deform(this.#x, this.#y, neuron.x, neuron.y);
-
-    Neuron.#deleteID(this.#id);
-    this.#id = ø;
-
-    this.#network = ø;
-    this.#x = ø;
-    this.#y = ø;
-
-    this.#from.clear();
-    this.#to.clear();
-
-    this.#bias = NaN;
-    this.#value = NaN;
-  }
-}
-
-class Path {
-  #network;
-
-  #from;
-  #to;
-
-  #weight = NaN;
-
-  #isValid() {
-    if (!Object.is(this.#network.Path.recall(this.#from, this.#to), this))
-      throw new Error('Path not properly attached to network');
-  }
-
-  constructor(network, from, to, w = NaN) {
-    if (!(network instanceof Network)) throw new Error('Invalid network');
-    if (network.Path.exists(from, to)) throw new Error('Path already exists');
-
-    this.#network = network;
-
-    this.#from = from;
-    this.#to = to;
-
-    const { min, max } = this.#network.population.config.get('path.weight');
-    this.#weight = (+w).clamp(min, max);
-  }
-
-  get from() {
-    this.#isValid();
-
-    return this.#from;
-  }
-
-  get to() {
-    this.#isValid();
-
-    return this.#to;
-  }
-
-  get weight() {
-    this.#isValid();
-
-    return this.#weight;
-  }
-
-  set weight(w) {
-    this.#isValid();
-
-    const { min, max } = this.#network.population.config.get('path.weight');
-    this.#weight = (+w).clamp(min, max);
-    this.#to.update();
-  }
-
-  deconstruct() {
-    this.#isValid();
-
-    this.#network = ø;
-
-    this.#from = ø;
-    this.#to = ø;
-
-    this.#weight = NaN;
-  }
-}
-
-export { Population as NeuralPopulation, Network as NeuralNetwork, Neuron as NeuralNeuron, Path as NeuralPath, Config as NeuralConfig };
