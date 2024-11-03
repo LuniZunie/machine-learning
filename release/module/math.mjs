@@ -126,8 +126,8 @@ Object.defineProperty(window, 'iΔ', { value: iΔ });
  * @example
  * Μ([1, 2, 3, 4, 5]) // 3 = (1 + 2 + 3 + 4 + 5) / 5
  */
-const μ = numbers => Σ(numbers) / numbers.length; // MU — mean
-Object.defineProperty(window, 'μ', { value: μ });
+const Μ = numbers => Σ(numbers) / numbers.length; // MU — mean
+Object.defineProperty(window, 'Μ', { value: Μ });
 
 /**
  * @function
@@ -188,25 +188,11 @@ Object.defineProperty(window, 'Ξℤ', { value: Ξℤ });
  * @returns {boolean}
  * @description Random boolean generator
  * @example
- * Ξif(0.4) // 40% probability of true
- * Ξif() // 50% probability of true
+ * Ξ(0.4) // 40% probability of true
+ * Ξ() // 50% probability of true
  */
 const Ξif = (number = 0.5) => Math.random() < number; // XIif — random boolean
 Object.defineProperty(window, 'Ξif', { value: Ξif });
-
-/**
- * @function
- * @name XIlog
- * @param {number} [number=0.5] - Probability (0 ≤ x ≤ 1)
- * @returns {number}
- * @description Random logarithmic generator
- * @example
- * Ξlog(0.5) // 50% of 0, 25% of 1, 12.5% of 2, 6.25% of 3, etc.
- * Ξlog() // 50% of 0, 25% of 1, 12.5% of 2, 6.25% of 3, etc.
- * Ξlog(0.1) // 10% of 0, 1% of 1, 0.1% of 2, 0.01% of 3, etc.
- */
-const Ξlog = (number = 0.5) => Math.log(Math.random()) / Math.log(number); // XIchain — random chain
-Object.defineProperty(window, 'Ξlog', { value: Ξlog });
 
 /**
  * @function
@@ -389,51 +375,5 @@ Math.iwΞ = function(weights) { // inverted weighted random
 
   return weights.length - 1;
 }
-
-/**
- * @function
- * @param {number} x - Number
- * @returns {number}
- * @description Error function
- */
-Math.erf = function(x) {
-  const a = [ 0.254829592, -0.284496736, 1.421413741, -1.453152027, 1.061405429 ];
-  const p = 0.3275911;
-
-  // save the sign of x
-  const sign = x >= 0 ? 1 : -1;
-  x = Math.abs(x);
-
-  // A&S formula 7.1.26
-  const t = 1 / (1 + p * x);
-  const y = 1 - (((((a[4] * t + a[3]) * t) + a[2]) * t + a[1]) * t + a[0]) * t * Math.exp(-x * x);
-
-  return sign * y;
-}
-
-/**
- * @function
- * @param {number} x - Number
- * @returns {number}
- * @description Logarithm function with base
- * @example
- * log(2, 8) // 3 = log(8, 2)
- * log(10, 100) // 2 = log(100, 10)
- */
-const log = function(base = 10, x) {
-  return Math.log(x) / Math.log(base);
-}
-Object.defineProperty(window, 'log', { value: log });
-
-/**
- * @function
- * @param {number} x - Number
- * @returns {number}
- * @description Natural logarithm function
- * @example
- * ln(2) // 0.6931471805599453
- */
-const ln = Math.log;
-Object.defineProperty(window, 'ln', { value: ln });
 
 export default true;

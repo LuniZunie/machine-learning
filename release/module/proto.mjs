@@ -17,27 +17,30 @@
 import './math.mjs';
 import RejectionHandler from './debug.mjs';
 
-Object.defineProperties(Array.prototype, {
-  'first': { get: function() { return this[0]; } },
-  'last': { get: function() { return this[this.length - 1]; } },
-  'Ξ': { get: function() { return this[Ξ(this.length) | 0]; } },
-  'weight': { value: function(m = 1) {
-    const σ = Σ(this);
-    return this.map(v => v / σ * m);
-  } },
-  'invertedWeight': { value: function(m = 1) {
-    const σ = Σ(this);
-    return this.map(v => (σ - v) / σ * m);
-  } },
-  'fit': { value: function(min = 0, max = 1) {
-    const arrMin = Math.min(...this);
-    const arrMax = Math.max(...this);
-    const arrRange = (arrMax - arrMin) || 1;
+Array.prototype.last = function() { // last element
+  return this[this.length - 1];
+};
+Array.prototype.Ξ = function() { // random element
+  return this[Ξ(this.length) | 0];
+};
+Array.prototype.weight = function(m = 1) { // convert array to weight array
+  const σ = Σ(this); // sum of array
+  return this.map(v => v / σ * m); // weight
+};
+Array.prototype.invertedWeight = function(m = 1) { // convert array to inverted weight array
+  const σ = Σ(this); // sum of array
+  return this.map(v => (σ - v) / σ * m); // invert weight
+};
+Array.prototype.fit = function(min = 0, max = 1) { // fit array to range
+  const arrMin = Math.min(...this); // minimum
+  const arrMax = Math.max(...this); // maximum
+  const arrRange = (arrMax - arrMin) || 1; // array range
 
-    return this.map(v => (v - arrMin) / arrRange * (max - min) + min);
-  } },
-  'copy': { value: function() { return this.slice(); } } // OPTIMIZE: not sure if this is the best way to copy an array
-});
+  return this.map(v => (v - arrMin) / arrRange * (max - min) + min); // fit array
+};
+Array.prototype.copy = function() { // copy array (shallow)
+  return this.slice(); // OPTIMIZE: not sure if this is the best way to copy an array
+};
 
 Map.prototype.weight = function(m = 1) { // convert map to weight map
   const σ = Σ(this.values()); // sum of values
