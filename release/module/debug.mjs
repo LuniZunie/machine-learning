@@ -40,5 +40,6 @@ export default class RejectionHandler {
     }
 
     throw new Error(`${this.#message}\n\nReason:\n >> ${reason.trim()}\n`);
+    return false;
   }
 };

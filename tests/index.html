@@ -21,7 +21,19 @@
 
     <link rel='stylesheet' type='text/css' href='./style.css' />
 
-    <!-- <script src='./script.mjs' type='module'></script> -->
+    <script src='../release/machine_learning.mjs' type='module'></script>
+    <script>
+      import Population from '../release/machine_learning.mjs';
+
+      const population = new Population();
+      population.Start({
+        network: {
+          reward: function (network) {
+            return network.score;
+          },
+        }
+      });
+    </script>
   </head>
   <body>
     <canvas id='scene' width='900' height='900'></canvas>

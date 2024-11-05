@@ -74,18 +74,6 @@ export default new Config({
         [Config.require]: 'function', // must be function
       },
     },
-
-    output: {
-      function: { // default: empty function
-        [Config.default]: function(outputs) { },
-        [Config.require]: (v, defined, reject, $) => {
-          if (defined) {
-            if (typeof v === 'function') return true; // allow function
-            else return false; // reject non-finite values
-          } else return true; // allow deletion
-        },
-      },
-    }
   },
 
   neuron: {

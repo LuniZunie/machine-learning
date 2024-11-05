@@ -38,7 +38,7 @@ export default Object.freeze({
 
     return id;
   },
-  has(id, label) {
+  has(label, id) {
     const reject = new RejectionHandler('Could not find ID!');
 
     let group;
@@ -50,7 +50,7 @@ export default Object.freeze({
 
     return group.has(id);
   },
-  delete(id, label) {
+  delete(label, id) {
     const reject = new RejectionHandler('Could not delete ID!');
 
     let group;
