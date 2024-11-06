@@ -22,17 +22,11 @@
     <link rel='stylesheet' type='text/css' href='./style.css' />
 
     <script src='../release/machine_learning.mjs' type='module'></script>
-    <script>
+    <script type='module'>
       import Population from '../release/machine_learning.mjs';
 
       const population = new Population();
-      population.Start({
-        network: {
-          reward: function (network) {
-            return network.score;
-          },
-        }
-      });
+      population.Start();
     </script>
   </head>
   <body>
