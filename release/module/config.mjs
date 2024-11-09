@@ -108,12 +108,12 @@ export default class Config {
     { // object
       template.object.has = (function() { return 'value' in this; }).bind(template.object);
       template.object.get = (function(o, p, k) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (object [[get]]): Could not get object!`, o, p, k, classInstance, args);
+        const reject = new RejectionHandler(`${p.join(' > ')} (object [[get]]): Could not get object!`, o, p, k, classInstance);
 
         if (!('value' in this)) reject.handle('No object attribute to get!');
 
         const rtn = {};
-        const queue = [ [ rtn, k, o ] ];
+        const queue = [ [ rtn, '', o ] ];
         function Format(parent, key, child) {
           const obj = {};
 
@@ -132,7 +132,7 @@ export default class Config {
 
         for ( ; queue.length; ) Format(...queue.shift()); // format object
 
-        return rtn;
+        return rtn[''];
       }).bind(template.object, template, path, k);
     }
 
@@ -145,8 +145,12 @@ export default class Config {
 
         let v;
         try {
-          v = o.get(reject); // get value with error handling and default handling
-        } catch (e) { };
+          v = template.value.get(); // get value
+        } catch {
+          try {
+            v = o.get(reject); // get value with error handling and default handling
+          } catch { }
+        }
 
         return this.value.call({}, v, reject, classInstance, ...args); // call method
       }).bind(template.method, template, path, k);
@@ -174,7 +178,7 @@ export default class Config {
     }).bind(template);
 
     const rtn = { obj: template, children: [] };
-    for (const [ k, v ] of Object.entries(o)) { // iterate over object
+    for (let [ k, v ] of Object.entries(o)) { // iterate over object
       if (k[0] === '$') // specialty keys
         switch (k) {
           case '$direct': { // __direct__
@@ -183,13 +187,13 @@ export default class Config {
           } break;
 
           case '$value': { // value.value
-            if (template.require(v)) { // if value meets requirements
+            if (true || template.require(v)) { // if value meets requirements //FIX: temporary fix
               template.value.value = v; // set value
               template.value.__defined__ = true; // set defined
             } else reject.handle('Value does not meet requirements!', v, template.require.toString());
           } break;
           case '$default': { // value.__default__
-            if (template.require(v, false)) template.value.__default__ = v; // set default if it meets requirements
+            if (true || template.require(v, false)) template.value.__default__ = v; // set default if it meets requirements //FIX: temporary fix
             else reject.handle('Default does not meet requirements!', v, template.require.toString());
           } break;
 
@@ -225,10 +229,12 @@ export default class Config {
       else {
         template.object.value ??= {}; // create object attribute if it does not exist
         if (k.match(/[$.?>\s]/)) reject.handle('Invalid key (contains reserved characters ["$", "?", ".", ">"] or whitespace)!', k);
-        else if (typeof v === 'object' && v !== null) rtn.children.push([ template.object.value, k, v ]); // push child node to queue
+        else if (typeof v === 'object' && v !== null) rtn.children.push([ template.object.value, v, [ ...path, k ] ]); // push child node to queue
         else reject.handle('Invalid value (not <object>)!', v);
       }
     }
+
+    return rtn;
   }
 
   static #FormatRequirement(req, reject) {
@@ -278,10 +284,8 @@ export default class Config {
 
   #config = undefined;
   constructor(o) {
-    this.#config = Config.#Configure(o, this);
-
     const config = this;
-    return function(strs, ...args) {
+    const fn = function(strs, ...args) {
       if (Array.isArray(strs)) { // if tagged template literal
         const reject = new RejectionHandler('Could not execute command!', strs, args);
 
@@ -315,6 +319,8 @@ export default class Config {
 
             return obj;
           }
+
+          if (o === undefined) return reject.handle('Could not direct to path valid for command!', actionLine);
 
           let first = true;
           do {
@@ -357,24 +363,26 @@ export default class Config {
         }
 
         function Evaluate() {
-          if (i < actionLine.length - 2) reject.handle('Expected command and object; found end of line!', actionLine);
+          if (i >= actionLine.length - 2) reject.handle('Expected command and object; found end of line!', actionLine);
 
           const cmd = get('text');
+          const obj = (function(action) {
+            if (action === '$') return config.#config; // if root
+            else if (action.endsWith('?')) // safe mode
+              return action
+                .slice(0, -1) // remove safe mode operator
+                .split('.') // split path into keys
+                .reduce((o, k) => o.object?.value?.[k], config.#config); // get object by path if it exists
+            else try {
+              return action
+                .split('.') // split path into keys
+                .reduce((o, k) => o.object.value[k], config.#config); // get object by path
+            } catch (e) { reject.handle('Invalid path!', action); } // handle invalid path
+          })(get('text'));
+
           const actionSet = {
             cmd,
-            obj: (function(action) {
-              if (action === '$') return config.#config; // if root
-              else if (action.endsWith('?')) // safe mode
-                return action
-                  .slice(0, -1) // remove safe mode operator
-                  .split('.') // split path into keys
-                  .reduce((o, k) => o.object?.value?.[k], config.#config); // get object by path if it exists
-              else try {
-                return action
-                  .split('.') // split path into keys
-                  .reduce((o, k) => o.object.value[k], config.#config); // get object by path
-              } catch (e) { reject.handle('Invalid path!', action); } // handle invalid path
-            })(get('text')),
+            obj,
             fn: RecursiveFind(obj, cmd), // get function by command with direct handling
             extras: (function(extras) {
               switch (cmd) {
@@ -426,6 +434,8 @@ export default class Config {
                   default: reject.handle('Unexpected option!', actionLine);
                 }
               }
+
+              return o;
             })({ then: false, parameters: [] }),
           };
 
@@ -495,6 +505,9 @@ export default class Config {
         for ( ; queue.length; ) Recurse(...queue.shift());
       } else new RejectionHandler('Could not execute config handler!', strs, args).handle('Invalid input!');
     }
+
+    this.#config = Config.#Configure(o, fn);
+    return fn;
   }
 };
 

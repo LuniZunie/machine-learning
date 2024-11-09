@@ -27,6 +27,37 @@
 
       const population = new Population();
       population.Start();
+      let scores = [];
+      population.Output(function(index, ...outputs) {
+        if (!Number.isNaN(outputs[0])) {
+          scores.push(outputs[0]);
+        }
+      });
+      population.Input(function(index) {
+        return [0.5];
+      });
+      console.log(μ(scores));
+
+      for (let i = 0; i < 100; i++) {
+        population.Evolve();
+        scores = [];
+        population.Input(function(index) {
+          return [0.5];
+        });
+
+        console.log(μ(scores));
+      }
+
+      function next() {
+        population.Evolve();
+        scores = [];
+        population.Input(function(index) {
+          return [0.5];
+        });
+
+        console.log(μ(scores));
+      }
+      window.next = next;
     </script>
   </head>
   <body>

@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-window.debug = true;
+window.debug = false;
 
 export default class RejectionHandler {
   #message;
@@ -36,7 +36,7 @@ export default class RejectionHandler {
     debug = debug.concat(this.#debug);
     if (window.debug && debug.length) {
       console.info(reason);
-      console.debug(...dump);
+      console.debug(...debug);
     }
 
     throw new Error(`${this.#message}\n\nReason:\n >> ${reason.trim()}\n`);

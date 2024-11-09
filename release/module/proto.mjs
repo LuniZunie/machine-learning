@@ -39,23 +39,24 @@ Object.defineProperties(Array.prototype, {
   'copy': { value: function() { return this.slice(); } } // OPTIMIZE: not sure if this is the best way to copy an array
 });
 
-Map.prototype.weight = function(m = 1) { // convert map to weight map
-  const σ = Σ(this.values()); // sum of values
-  return new Map(Array.from(this, ([k, v]) => [k, v / σ * m])); // weight
-};
-Map.prototype.invertedWeight = function(m = 1) { // convert map to inverted weight map
-  const σ = Σ(this.values()); // sum of values
-  return new Map(Array.from(this, ([k, v]) => [k, (σ - v) / σ * m])); // invert weight
-};
-Map.prototype.Ξweighted = function() { // random weighted element
-  return [ ...this.keys() ][Ξweighted([ ...this.values() ])];
-};
-Map.prototype.ΞinvertedWeighted = function() { // random inverted weighted element
-  return [ ...this.keys() ][ΞinvertedWeighted([ ...this.values() ])];
-};
-Map.prototype.copy = function() { // copy map (shallow)
-  return new Map(this);
-};
+Object.defineProperties(Map.prototype, {
+  weight: { value: function(m = 1) {
+    const σ = Σ(this.values());
+    return new Map(Array.from(this, ([k, v]) => [k, v / σ * m]));
+  } },
+  invertedWeight: { value: function(m = 1) {
+    const σ = Σ(this.values());
+    return new Map(Array.from(this, ([k, v]) => [k, (σ - v) / σ * m]));
+  } },
+  Ξweighted: { value: function() {
+    return [ ...this.keys() ][Ξweighted([ ...this.values() ])];
+  } },
+  ΞinvertedWeighted: { value: function() {
+    return [ ...this.keys() ][ΞinvertedWeighted([ ...this.values() ])];
+  } },
+  copy: { value: function() { return new Map(this); } },
+  last: { get: function() { return this.get([ ...this.keys() ].last); } }
+});
 
 Number.prototype.clamp = function(min, max) { // clamp number
   return Math.min(Math.max(this, min), max);

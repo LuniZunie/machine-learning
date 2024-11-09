@@ -14,11 +14,11 @@
   limitations under the License.
 */
 
-import './module/utility.mjs';
-import './module/logic_gate.mjs';
-import './module/math.mjs';
-import RejectionHandler from './module/debug.mjs';
-import Config from './module/config.mjs';
+import '../module/utility.mjs';
+import '../module/logic_gate.mjs';
+import '../module/math.mjs';
+import RejectionHandler from '../module/debug.mjs';
+import Config from '../module/config.mjs';
 
 export default new Config({
   population: {
@@ -39,27 +39,27 @@ export default new Config({
   network: {
     dynamic: { // default: true
       // if amount of layers and neurons per layer can change
-      [Config.value]: true,
+      [Config.value]: false,
       [Config.require]: 'boolean', // must be boolean
     },
 
     inputs: { // default: 2
        // number of input neurons when dynamic network configuration is enabled
       [Config.value]: 2,
-      [Config.require]: v => Number.isInteger(v) && v > 1, // integers [1,∞)
+      [Config.require]: v => Number.isInteger(v) && v >= 0, // integers [1,∞)
       [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is disabled! (Inputs count set by network.layers[0])',
     },
     outputs: { // default: 1
        // number of output neurons when dynamic network configuration is enabled
       [Config.value]: 1,
-      [Config.require]: v => Number.isInteger(v) && v > 1, // integers [1,∞)
+      [Config.require]: v => Number.isInteger(v) && v > 0, // integers [1,∞)
       [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is disabled! (Outputs count set by network.layers[-1])',
     },
 
     layers: { // default: [ 2, 2, 1 ]
       // neurons per layer when dynamic network configuration is disabled (input, ...hidden, output)
-      [Config.value]: [ 2, 2, 1 ],
-      [Config.require]: v => Array.isArray(v) && v.length > 1 && v.every(n => Number.isInteger(n) && n > 1), // array of positive integers [1,∞)
+      [Config.value]: [ 1, 2, 1 ],
+      [Config.require]: v => Array.isArray(v) && v.length > 1 && v.every(n => Number.isInteger(n) && n > 0), // array[2+] of positive integers [1,∞)
       [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
 
       [Config.get]: v => [ ...v ], // clone array
@@ -68,7 +68,7 @@ export default new Config({
 
     reward: {
       function: { // default: mean of outputs function
-        [Config.value]: function(outputs) {
+        [Config.value]: function(...outputs) {
           return μ(outputs); // mean of outputs
         },
         [Config.require]: 'function', // must be function
@@ -80,7 +80,7 @@ export default new Config({
     activation: {
       function: { // default: <sigmoid function>
         // activation function
-        [Config.value]: 'fast sigmoid',
+        [Config.value]: function(v) { return 1 / (1 + Math.exp(-v)); }, // sigmoid function
         [Config.require]: 'function', // must be function
 
         [Config.set]: (fn, defined, reject) => { // set function
@@ -172,8 +172,9 @@ export default new Config({
 
       range: { // default: { min: -1, max: 1 }
         // range of neuron bias
+        [Config.value]: null,
         [Config.get]: (v, reject, $) => { // get range
-          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`;
+          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`.object;
 
           return { min, max }; // return range
         },
@@ -191,7 +192,7 @@ export default new Config({
         },
 
         [Config.method]: (v, reject, $) => {
-          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`;
+          const { min: { value: min }, max: { value: max } } = $`parse neuron.bias.range`.object;
 
           return Ξ(min, max); // return random value
         },
@@ -201,6 +202,7 @@ export default new Config({
           [Config.value]: -1,
           [Config.default]: -Infinity, // default: -∞
           [Config.require]: (v, defined, reject, $) => {
+            console.log($);
             if (defined) {
               if (Number.isFinite(v)) return v <= $`get neuron.bias.range.max` && v <= 0; // require min <= max and min <= 0
               else return false; // reject non-finite values
@@ -228,9 +230,9 @@ export default new Config({
 
       range: { // default: { min: -1, max: 1 }
         // range of synapse weight
-
+        [Config.value]: null,
         [Config.get]: (v, reject, $) => { // get range
-          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`;
+          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`.object;
 
           return { min, max }; // return range
         },
@@ -248,7 +250,7 @@ export default new Config({
         },
 
         [Config.method]: (v, reject, $) => {
-          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`;
+          const { min: { value: min }, max: { value: max } } = $`parse synapse.weight.range`.object;
 
           return Ξ(min, max); // return random value
         },
@@ -285,12 +287,15 @@ export default new Config({
           const ξs = Object.keys($`parse mutate.evolve.layer`.object); // get all random chances
 
           const mutations = new Map();
-          for (const k of ξs) mutations.set(k, $`run mutate.evolve.layer.${k}`); // get random chance
+          for (const k of ξs)
+            try {
+              mutations.set(k, $`run mutate.evolve.layer.>${k}`); // get random chance\
+            } catch { }
 
           return mutations; // return all mutations
         },
 
-        [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+        [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
 
         add: { // default: 10
           // chance of adding a layer (percentage)
@@ -298,7 +303,7 @@ export default new Config({
           [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
           [Config.get]: v => v / 100, // convert to percentage
           [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
-          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+          [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
         },
         remove: { // default: 10
           // chance of removing a layer (percentage)
@@ -306,7 +311,7 @@ export default new Config({
           [Config.require]: v => Number.isFinite(v) && v >= 0 && v <= 100, // [0, 100]
           [Config.get]: v => v / 100, // convert to percentage
           [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
-          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+          [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
         },
       },
 
@@ -315,7 +320,10 @@ export default new Config({
           const ξs = Object.keys($`parse mutate.evolve.neuron`.object); // get all random chances
 
           const mutations = new Map();
-          for (const k of ξs) mutations.set(k, $`run mutate.evolve.neuron.${k}`); // get random chance
+          for (const k of ξs)
+            try {
+              mutations.set(k, $`run mutate.evolve.neuron.>${k}`); // get random chance
+            } catch { }
 
           return mutations; // return all mutations
         },
@@ -327,7 +335,7 @@ export default new Config({
           [Config.get]: v => v / 100, // convert to percentage
           [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
 
-          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+          [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
         },
         change: {
           [Config.direct]: 'chance', // inherit chance
@@ -360,7 +368,7 @@ export default new Config({
           [Config.get]: v => v / 100, // convert to percentage
           [Config.method]: v => Ξlog(v) | 0, // check if random chance is met
 
-          [Config.disabled]: $ => $`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
+          [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is enabled! (Variable layer sizes)',
         },
       },
 
@@ -369,7 +377,10 @@ export default new Config({
           const ξs = Object.keys($`parse mutate.evolve.synapse`.object); // get all random chances
 
           const mutations = new Map();
-          for (const k of ξs) mutations.set(k, $`run mutate.evolve.synapse.${k}`); // get random chance
+          for (const k of ξs)
+            try {
+              mutations.set(k, $`run mutate.evolve.synapse.>${k}`); // get random chance
+            } catch { }
 
           return mutations; // return all mutations
         },
@@ -431,7 +442,10 @@ export default new Config({
           const ξs = Object.keys($`parse mutate.adapt.neuron`.object); // get all random chances
 
           const mutations = new Map();
-          for (const k of ξs) mutations.set(k, $`run mutate.adapt.neuron.${k}`); // get random chance
+          for (const k of ξs)
+            try {
+              mutations.set(k, $`run mutate.adapt.neuron.>${k}`); // get random chance
+            } catch { }
 
           return mutations; // return all mutations
         },
@@ -467,7 +481,10 @@ export default new Config({
           const ξs = Object.keys($`parse mutate.adapt.`.object); // get all random chances
 
           const mutations = new Map();
-          for (const k of ξs) mutations.set(k, $`run mutate.adapt.synapse.${k}`); // get random chance
+          for (const k of ξs)
+            try {
+              mutations.set(k, $`run mutate.adapt.synapse.>${k}`); // get random chance
+            } catch { }
 
           return mutations; // return all mutations
         },
