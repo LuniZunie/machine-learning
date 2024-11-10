@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-window.debug = false;
+window.debug = true;
 
 export default class RejectionHandler {
   #message;

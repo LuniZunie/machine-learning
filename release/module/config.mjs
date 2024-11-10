@@ -92,7 +92,7 @@ export default class Config {
         if (this.value.__defined__) return this.value.value; // return value if defined
         else if ('__default__' in this.value) return this.value.default; // return default if not defined
         else reject.handle('Undefined value with no default for fallback!');
-      } else reject.handle('No value attribute to get!');
+      } else throw new Error('No value attribute to get!');
     }).bind(template);
     template.set = (function(v, defined, reject, raw) {
       if ('value' in this.value) { // if value attribute exists
@@ -118,7 +118,10 @@ export default class Config {
           const obj = {};
 
           try {
+            const debug = window.debug;
+            window.debug = false;
             obj.value = child.value.get(); // get value of child node
+            window.debug = debug;
           } catch (e) { };
 
           if ('value' in child.object) { // if object attribute exists

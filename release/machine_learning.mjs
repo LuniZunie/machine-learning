@@ -349,7 +349,7 @@ class NeuralNetwork {
 
       this.#layers.set(depth, layer); // set layer in network
       for (const [ y, neuron ] of this.#layers.get(depth - 1).entries()) // iterate over previous layer
-        neuron.connect(y, 1); // connect neuron to new layer with weight 1
+        neuron.Synapse.Connect(y, 1); // connect neuron to new layer with weight 1
     }).bind(this),
     Delete: (function(depth) { // delete layer (depth: number)
       const reject = new Rejection('Could not delete layer', 'depth', depth); // create rejection handler
@@ -368,7 +368,7 @@ class NeuralNetwork {
       this.#layers.delete(depth); // delete layer from network
 
       for (let i = depth; i < this.#layers.size; i++) { // iterate over layers after deleted layer
-        const layer = this.#layers.get(i + i); // get layer
+        const layer = this.#layers.get(i + 1); // get layer
         this.#layers.set(i, layer); // set layer at previous index
 
         for (const neuron of layer.values())
@@ -435,8 +435,12 @@ class NeuralNetwork {
       layer.get(y).Destruct(); // destruct neuron
       layer.delete(y); // delete neuron from layer
 
-      for (let i = y; i < layer.size; i++) // iterate over neurons after deleted neuron
-        this.#neuronMovers.get(layer.get(i).id)(i); // move neuron to previous index
+      for (let i = y; i < layer.size; i++) {// iterate over neurons after deleted neuron
+        const neuron = layer.get(i + 1); // get neuron
+        this.#neuronMovers.get(neuron.id)(undefined, i); // move neuron to previous index
+        layer.set(i, neuron); // set neuron at previous index
+        layer.delete(i + 1); // delete neuron
+      }
       this.#height = Math.max(...this.heights); // update network height
     }).bind(this),
 
@@ -628,7 +632,7 @@ class NeuralNetwork {
     if ($dynamic) {
       const mutations = this.config`run mutate.evolve.layer`; // get layer evolutions
       for (let i = Math.min(mutations.get('remove'), this.#layers.size - 2); i > 0; i--) // iterate over layer removals
-        this.#Layer.Delete(Ξ(1, this.#layers.size - 1)); // delete random layer
+        this.#Layer.Delete(Ξℤ(1, this.#layers.size - 1)); // delete random layer
       for (let i = mutations.get('add'); i > 0; i--) this.#Layer.New(); // iterate over layer additions
     }
 
@@ -639,7 +643,7 @@ class NeuralNetwork {
       if ($dynamic && depth > 0 && depth < this.#layers.size - 1) { // if network is dynamic and layer is not input or output layer
         const mutations = this.config`run mutate.evolve.neuron`; // get neuron evolutions
         for (let i = Math.min(mutations.get('remove'), layer.size - 1); i > 0; i--) // iterate over neuron removals
-          this.#Neuron.Delete(depth, Ξ(0, layer.size - 1)); // delete random neuron
+          this.#Neuron.Delete(depth, Ξℤ(0, layer.size - 1)); // delete random neuron
         for (let i = mutations.get('add'); i > 0; i--) this.#Neuron.New(depth); // iterate over neuron additions
       }
 
@@ -706,8 +710,8 @@ class NeuralNetwork {
 
           const layer = new Map(); // create new layer
           for (let y = 0; y < height; y++) // iterate over height
-            layer.set(y, this.#ConstructNeuron(0, y, 0)); // create new neuron with bias 0
-          this.#layers.set(depth, layer); // set layer in network based on input or output
+            layer.set(y, this.#ConstructNeuron(+depth, y, 0)); // create new neuron with bias 0
+          this.#layers.set(+depth, layer); // set layer in network based on input or output
           this.#height = Math.max(this.#height, height); // update network height
         }
       else { // if network is static
@@ -1201,7 +1205,10 @@ class Synapse {
 
     this.#output.Synapse.input.Delete(this.#input); // delete input synapse
     try {
+      const debug = window.debug; // save debug status
+      window.debug = false; // disable debug so that synapse does not debug
       this.#input.Synapse.output.Delete(this.#output); // delete output synapse
+      window.debug = debug; // reset debug status
     } catch { } // if output synapse does not exist, ignore error
 
     ID.delete('synapse', this.#id); // delete synapse id

@@ -39,13 +39,13 @@ export default new Config({
   network: {
     dynamic: { // default: true
       // if amount of layers and neurons per layer can change
-      [Config.value]: false,
+      [Config.value]: true,
       [Config.require]: 'boolean', // must be boolean
     },
 
-    inputs: { // default: 2
+    inputs: { // default: 1
        // number of input neurons when dynamic network configuration is enabled
-      [Config.value]: 2,
+      [Config.value]: 1,
       [Config.require]: v => Number.isInteger(v) && v >= 0, // integers [1,∞)
       [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is disabled! (Inputs count set by network.layers[0])',
     },
@@ -56,7 +56,7 @@ export default new Config({
       [Config.disabled]: $ => !$`get network.dynamic` && 'Dynamic network configuration is disabled! (Outputs count set by network.layers[-1])',
     },
 
-    layers: { // default: [ 2, 2, 1 ]
+    layers: { // default: [ 1, 2, 1 ]
       // neurons per layer when dynamic network configuration is disabled (input, ...hidden, output)
       [Config.value]: [ 1, 2, 1 ],
       [Config.require]: v => Array.isArray(v) && v.length > 1 && v.every(n => Number.isInteger(n) && n > 0), // array[2+] of positive integers [1,∞)
