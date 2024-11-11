@@ -483,7 +483,7 @@ class NeuralNetwork {
 
       inputNeurons[i].value = input; // set input value
     }
-    this.#cache.input.push({ inputs, changed }); // add input to cache //TESTME: might not need { inputs }
+    this.#cache.input.push({ changed }); // add input to cache
 
     const updateSet = this.#GetUpdateSet(...changed); // get update set
     for (const neuron of updateSet) neuron.Update(); // update neurons in set
@@ -536,8 +536,8 @@ class NeuralNetwork {
     return output; // return output
   }
 
-  #Adapt({ inputs, changed }) { // adapt network (inputs: number[], changed: Set<number>) //TESTME: might not need { inputs }
-    const reject = new Rejection('Could not adapt NeuralNetwork', 'inputs', inputs, 'changed', changed); // create rejection handler
+  #Adapt({ changed }) { // adapt network (changed: Set<number>)
+    const reject = new Rejection('Could not adapt NeuralNetwork', 'changed', changed); // create rejection handler
     this.#_(reject); // check network existence
 
     if (!this.#alive) return reject.handle('Network is dead', 'alive', this.#alive); // if network is dead, throw error
@@ -795,7 +795,7 @@ class Neuron {
     this.#y = y; // set neuron y value
 
     this.#bias = bias.clamp(...config.root.neuron.bias.range[Config.get]()); // set neuron bias
-    this.CalculateUpdateFunction(); // calculate neuron value function //TESTME: possible to be private
+    this.CalculateUpdateFunction(); // calculate neuron value function
 
     const neuron = this; // create neuron reference
     this.#callback.Callback(this.#id, (function(depth = neuron.#depth, y = neuron.#y) { // neuron mover callback

@@ -36,7 +36,7 @@ Object.defineProperties(Array.prototype, {
 
     return this.map(v => (v - arrMin) / arrRange * (max - min) + min);
   } },
-  'copy': { value: function() { return this.slice(); } } // OPTIMIZE: not sure if this is the best way to copy an array
+  'copy': { value: function() { return [ ...this ]; } },
 });
 
 Object.defineProperties(Map.prototype, {
