@@ -20,15 +20,11 @@ import './module/logic_gate.mjs';
 import './module/math.mjs';
 import Rejection from './module/debug.mjs';
 import ID from './module/id.mjs';
-import population from './config/population.mjs';
 
-import defaultConfig from './config/population.mjs';
+import Config from './module/config.mjs';
+import config from './config/population.mjs';
 
 export default class Population {
-  static #defaultConfig = defaultConfig; // default config
-  #config = Population.#defaultConfig; // set config to default config
-  #config2;
-
   #networks = new Map();
   #statistics = {
     'generation': 0, // current generation
@@ -42,25 +38,13 @@ export default class Population {
   #outputFunction = null;
 
   #status = 0; // 0: off, 1: idle, 2: active
-  constructor(config) { // create new Population (config: object)
-    const reject = new Rejection('Could not construct Population');
-
-    if (config) try {
-      this.#config = this.#config(config); // merge config with default config
-    } catch (err) { reject.handle(err, 'config', config, 'error', err); } // handle error
-
-    this.#config2 = this.#config`parse $`; // set config2 to parsed config
+  constructor(cfg) { // create new Population (cfg: object)
+    if (cfg) config.put(cfg); // merge config with default config
   }
 
-  get config() { return this.#config`parse $`; }
-  set config(config) {
-    const reject = new Rejection('Could not set Population config');
-
-    try {
-      this.#config = this.#config(config); // merge config with default config
-    } catch (err) { reject.handle(err, 'config', config, 'error', err); } // handle error
-
-    this.#config2 = this.#config`parse $`; // set config2 to parsed config
+  // get config() { return this.#config; } // get config //FIXME: reimplement, need to make it so config cannot be changed while population is active
+  set config(cfg) {
+    config.put(cfg); // merge config with default config
   }
 
   get statistics() {
@@ -80,8 +64,9 @@ export default class Population {
   }
 
   #StatisticsCallback = (function(obj) {
-    if (obj.best !== undefined) this.#statistics.best = obj.best;
-    if (obj.worst !== undefined) this.#statistics.worst = obj.worst;
+    return; // do nothing
+    if (obj.score > this.#statistics.best) this.#statistics.best = obj.score;
+    if (obj.score < this.#statistics.worst) this.#statistics.worst = obj.score;
     if (obj.graph) {
       this.#statistics.graph[obj.graph.index] ??= [];
       this.#statistics.graph[obj.graph.index].push([ obj.graph.id, obj.graph.timestamp, obj.graph.score ]);
@@ -106,8 +91,7 @@ export default class Population {
     for (const network of this.#networks.values()) network.Destruct(); // reset all networks
     this.#networks.clear(); // clear network map
 
-    //const $size = this.#config`get population.size`; // get population size
-    const $size = this.#config2.object.population.object.size.value; // get population size
+    const $size = config.root.population.size[Config.get](); // get population size
     for (let i = 0; i < $size; i++) { // create networks
       const network = this.#ConstructNeuralNetwork(i); // construct network
       this.#networks.set(network.id, network); // add network to network map
@@ -161,8 +145,7 @@ export default class Population {
       return reject.handle('Population status other than "active"', 'status', this.status);
     this.#status = 1; // set status to idle
 
-    //const $equality = this.#config`get population.equality`; // get equality config
-    const $equality = this.#config2.object.population.object.equality.value; // get equality config
+    const $equality = config.root.population.equality[Config.get](); // get equality config
     const { maxScore, minScore, scores } = [ ...this.#networks.entries() ]
       .reduce(function({ maxScore, minScore, scores }, [ id, network ]) { // get scores
         return {
@@ -174,14 +157,12 @@ export default class Population {
 
     const weights = scores.reduce(function(weights, [ id, score ]) { // iterate over scores
       const weight = (score - minScore) / (maxScore - minScore); // calculate weight
-      const equalize = weight  * (1 - $equality) + $equality; // equalize weight
+      const equalize = weight * (1 - $equality) + $equality; // equalize weight
       return weights.set(id, equalize); // set equalized weight
     }, new Map()); // initialize weights
 
     const networks = new Map(); // create new network map
-    const $size = this.#config2.object.population.object.size.value; // get population size
-    //for (let i = this.#config`get population.size`; i > 0; i--) { // iterate over population size
-    for (let i = $size; i > 0; i--) { // iterate over population size
+    for (let i = config.root.population.size[Config.get](); i > 0; i--) { // iterate over population size
       const ref = this.#networks.get(weights.Ξweighted()); // get reference network
 
       const network = this.#ConstructNeuralNetwork(i, ref); // construct network
@@ -229,7 +210,7 @@ export default class Population {
     else if (!(ref instanceof NeuralNetwork) && ref !== undefined) return reject.handle('Invalid reference type'); // if reference is not a NeuralNetwork, throw error
 
     return new NeuralNetwork(
-      { population: this, config: this.#config, config2: this.#config2 }, // pass
+      { population: this }, // pass
       { Output: this.#OutputCallback, Statistics: this.#StatisticsCallback }, // callback
       index, // index
       ref // reference
@@ -334,8 +315,7 @@ class NeuralNetwork {
       const reject = new Rejection('Could not create new layer'); // create rejection handler
       this.#_(reject); // check network existence
 
-      //const $dynamic = this.config`get network.dynamic`; // get dynamic config
-      const $dynamic = this.config2.object.network.object.dynamic.value; // get dynamic config
+      const $dynamic = config.root.network.dynamic[Config.get](); // get dynamic config
       if (!$dynamic) return reject.handle('Network is not dynamic', 'dynamic', $dynamic); // if network is not dynamic, throw error
 
       const depth = this.#layers.size; // get layer depth
@@ -355,8 +335,7 @@ class NeuralNetwork {
       const reject = new Rejection('Could not delete layer', 'depth', depth); // create rejection handler
       this.#_(reject); // check network existence
 
-      const $dynamic = this.config2.object.network.object.dynamic.value;
-      //const $dynamic = this.config`get network.dynamic`; // get dynamic config
+      const $dynamic = config.root.network.dynamic[Config.get](); // get dynamic config
       if (!$dynamic) return reject.handle('Network is not dynamic', 'dynamic', $dynamic); // if network is not dynamic, throw error
       else if (depth < 0 || depth >= this.#layers.size) return reject.handle('No layer at depth'); // if depth is invalid, throw error
       else if (depth === 0) return reject.handle('Cannot delete input layer'); // if depth is input layer, throw error
@@ -399,8 +378,7 @@ class NeuralNetwork {
       const reject = new Rejection('Could not create neuron', 'depth', depth); // create rejection handler
       this.#_(reject); // check network existence
 
-      const $dynamic = this.config2.object.network.object.dynamic.value;
-      // const $dynamic = this.config`get network.dynamic`; // get dynamic config
+      const $dynamic = config.root.network.dynamic[Config.get](); // get dynamic config
       if (!$dynamic) return reject.handle('Network is not dynamic', 'dynamic', $dynamic); // if network is not dynamic, throw error
       else if (depth < 0 || depth >= this.#layers.size) return reject.handle('No layer at depth'); // if depth is invalid, throw error
       else if (depth === 0) return reject.handle('Cannot create neuron in input layer'); // if depth is input layer, throw error
@@ -409,9 +387,7 @@ class NeuralNetwork {
       this.#expectedHeights[depth]++; // increment expected height
 
       const layer = this.#layers.get(depth); // get layer
-      // const neuron = this.#ConstructNeuron(depth, layer.size, this.config`run neuron.bias.range`); // create new neuron with random bias
-      const { min: $min, max: $max } = this.config2.object.neuron.object.bias.object.range.value;
-      const neuron = this.#ConstructNeuron(depth, layer.size, Ξ($min, $max)); // create new neuron with random bias
+      const neuron = this.#ConstructNeuron(depth, layer.size, config.root.neuron.bias.range[Config.call]()); // create new neuron with random bias
 
       layer.set(layer.size, neuron); // set neuron in layer
       this.#height = Math.max(this.#height, layer.size); // update network height
@@ -420,8 +396,7 @@ class NeuralNetwork {
       const reject = new Rejection('Could not delete neuron', 'depth', depth, 'y', y); // create rejection handler
       this.#_(reject); // check network existence
 
-      const $dynamic = this.config2.object.network.object.dynamic.value;
-      // const $dynamic = this.config`get network.dynamic`; // get dynamic config
+      const $dynamic = config.root.network.dynamic[Config.get](); // get dynamic config
       if (!$dynamic) return reject.handle('Network is not dynamic', 'dynamic', $dynamic); // if network is not dynamic, throw error
       else if (depth < 0 || depth >= this.#layers.size) return reject.handle('No layer at depth'); // if depth is invalid, throw error
       else if (depth === 0) return reject.handle('Cannot delete neuron in input layer'); // if depth is input layer, throw error
@@ -532,14 +507,12 @@ class NeuralNetwork {
 
     if (!this.#alive) return reject.handle('Network is dead', 'alive', this.#alive); // if network is dead, throw error
 
-    const $rewardFunction = this.config2.object.network.object.reward.object.function.value;
-    // const $rewardFunction = this.config`get network.reward.function`; // get reward function
+    const $rewardFunction = config.root.network.reward.function[Config.get](); // get reward function
     const reward = $rewardFunction(...output) || 0; // get reward
     if (typeof reward !== 'number') return reject.handle('Reward function did not return a number', 'reward', reward); // if reward is not a number, throw error
 
     let score = (this.#scores[0] || 0) + reward; // calculate new score
-    if (this.config2.object.mutate.object.adapt.value && this.#cache.scoreDerivative.length) { // if network should adapt and at least 1 score derivative exists
-    // if (this.config`get mutate.adapt` && this.#cache.scoreDerivative.length) { // if network should adapt and at least 1 score derivative exists
+    if (config.root.mutate.adapt[Config.get]() && this.#cache.scoreDerivative.length) { // if network should adapt and at least 1 score derivative exists
       const δ = score - (this.#scores[0] || 0); // calculate score change
       if (δ < 0 && this.#cache.scoreDerivative.last > 0) { // if last score was a relative maximum
         output = this.#Adapt(this.#cache.input.last); // adapt network and get best adaptation
@@ -556,10 +529,7 @@ class NeuralNetwork {
     }
     this.#scores.unshift(score); // add score to scores
 
-    const statisticsObject = {}; // create statistics callback object
-    if (score > (this.population.statistics.best ?? -Infinity)) statisticsObject.best = score; // update best score
-    if (score < (this.population.statistics.worst ?? Infinity)) statisticsObject.worst = score; // update worst score
-
+    const statisticsObject = { score }; // create statistics object
     statisticsObject.graph = { index: this.#index, id: this.#id, timestamp: Date.now(), score }; // update graph
     this.#callback.Statistics(statisticsObject); // call statistics callback
 
@@ -572,17 +542,15 @@ class NeuralNetwork {
 
     if (!this.#alive) return reject.handle('Network is dead', 'alive', this.#alive); // if network is dead, throw error
 
-    const $rewardFunction = this.config2.object.network.object.reward.object.function.value;
-    // const $rewardFunction = this.config`get network.reward.function`; // get reward function
+    const $rewardFunction = config.root.network.reward.function[Config.get](); // get reward function
     const best = { network: '', reward: -Infinity, output: [] }; // create best adaptation object
-    for (let i = this.config2.object.network.object.mutate.object.adapt.object.iterations.value; i > 0; i--) { // iterate over adaptation iterations
-    // for (let i = this.config`get mutate.adapt.iterations`; i > 0; i--) { // iterate over adaptation iterations
+    for (let i = config.root.mutate.adapt.iterations[Config.get](); i > 0; i--) { // iterate over adaptation iterations
       let reset = ''; // create reset function string
       let recreate = ''; // create recreation function string
 
       for (const [ depth, layer ] of this.#layers.entries()) // iterate over layers
         for (const [ y, neuron ] of layer.entries()) { // iterate over neurons
-          const mutations = this.config`run mutate.adapt.neuron`; // get neuron adaptations
+          const mutations = config.root.mutate.adapt.neuron[Config.call](); // get neuron adaptations
           if (mutations.get('change')) { // if change adaptation exists
             reset += `layers.get(${depth}).get(${y}).bias = ${neuron.bias};\n`; // reset neuron value
 
@@ -592,7 +560,7 @@ class NeuralNetwork {
 
           const synapses = neuron.Synapse.input.list.entries(); // get neuron input synapses
           for (const [ y, synapse ] of synapses) { // iterate over synapses
-            const mutations = this.config`run mutate.adapt.synapse`; // get synapse adaptations
+            const mutations = config.root.mutate.adapt.synapse[Config.call](); // get synapse adaptations
             if (mutations.get('change')) { // if change adaptation exists
               reset += `layers.get(${depth}).get(${y}).synapses.get(${neuron.y}).weight = ${synapse.weight};\n`; // reset synapse value
 
@@ -627,10 +595,9 @@ class NeuralNetwork {
     const reject = new Rejection('Could not evolve NeuralNetwork'); // create rejection handler
     this.#_(reject); // check network existence
 
-    const $dynamic = this.config2.object.network.object.dynamic.value;
-    // const $dynamic = this.config`get network.dynamic`; // get dynamic config
+    const $dynamic = config.root.network.dynamic[Config.get](); // get dynamic config
     if ($dynamic) {
-      const mutations = this.config`run mutate.evolve.layer`; // get layer evolutions
+      const mutations = config.root.mutate.evolve.layer[Config.call](); // get network evolutions
       for (let i = Math.min(mutations.get('remove'), this.#layers.size - 2); i > 0; i--) // iterate over layer removals
         this.#Layer.Delete(Ξℤ(1, this.#layers.size - 1)); // delete random layer
       for (let i = mutations.get('add'); i > 0; i--) this.#Layer.New(); // iterate over layer additions
@@ -641,27 +608,27 @@ class NeuralNetwork {
       const lastLayer = this.#layers.get(depth - 1); // get last layer
 
       if ($dynamic && depth > 0 && depth < this.#layers.size - 1) { // if network is dynamic and layer is not input or output layer
-        const mutations = this.config`run mutate.evolve.neuron`; // get neuron evolutions
+        const mutations = config.root.mutate.evolve.neuron[Config.call](); // get layer evolutions
         for (let i = Math.min(mutations.get('remove'), layer.size - 1); i > 0; i--) // iterate over neuron removals
           this.#Neuron.Delete(depth, Ξℤ(0, layer.size - 1)); // delete random neuron
         for (let i = mutations.get('add'); i > 0; i--) this.#Neuron.New(depth); // iterate over neuron additions
       }
 
       for (const neuron2 of layer.values()) { // iterate over neurons
-        const mutations = this.config`run mutate.evolve.neuron`; // get neuron evolutions
+        const mutations = config.root.mutate.evolve.neuron[Config.call](); // get neuron evolutions
         if (mutations.get('change')) // if change evolutions exists
           neuron2.bias += mutations.get('change'); // change neuron value
 
         if (neuron2.isInput) continue; // skip input neurons
         for (const neuron1 of lastLayer.values()) { // iterate over neurons in last layer
-          const mutations = this.config`run mutate.evolve.synapse`; // get synapse evolutions
+          const mutations = config.root.mutate.evolve.synapse[Config.call](); // get synapse evolutions
           if (neuron1.Synapse.output.Has(neuron2)) { // if synapse exists
             if (mutations.get('remove')) // if remove evolutions exists
               neuron1.Synapse.output.Delete(neuron2); // remove synapse
             else if (mutations.get('change')) // if change evolutions exists
               neuron1.Synapse.output.Get(neuron2).weight += mutations.get('change'); // change synapse value
           } else if (mutations.get('add')) // if add evolutions exists
-            neuron1.Synapse.Connect(neuron2.y, this.config`run synapse.weight.range`); // connect neurons
+            neuron1.Synapse.Connect(neuron2.y, config.root.synapse.weight.range[Config.call]()); // connect neurons
         }
       }
     }
@@ -701,22 +668,20 @@ class NeuralNetwork {
             this.#layers.get(depth - 1).get(neuron2.y).Synapse.Connect(y, synapse.weight); // connect neurons
       }
     else {
-      if (this.config2.object.network.object.dynamic.value)
-      // if (this.config`get network.dynamic`) // if network is dynamic
+      if (config.root.network.dynamic[Config.get]()) // if network is dynamic
         for (const k of [ 'inputs', 'outputs' ]) { // iterate over input and output layers
-          const height = this.config`get network.>${k}`; // get layer height
+          const $height = config.root.network[k][Config.get](); // get layer height
           const depth = { 'inputs': 0, 'outputs': 1 }[k]; // get layer depth
-          this.#expectedHeights[depth] = height; // set expected height
+          this.#expectedHeights[depth] = $height; // set expected height
 
           const layer = new Map(); // create new layer
-          for (let y = 0; y < height; y++) // iterate over height
+          for (let y = 0; y < $height; y++) // iterate over height
             layer.set(y, this.#ConstructNeuron(+depth, y, 0)); // create new neuron with bias 0
           this.#layers.set(+depth, layer); // set layer in network based on input or output
-          this.#height = Math.max(this.#height, height); // update network height
+          this.#height = Math.max(this.#height, $height); // update network height
         }
       else { // if network is static
-        const $heights = this.config2.object.network.object.layers.value;
-        // const $heights = this.config`get network.layers`; // get layer heights
+        const $heights = config.root.network.layers[Config.get]();
         for (const depth in $heights) { // iterate over layer heights
           const height = $heights[depth]; // get layer height
           this.#expectedHeights[depth] = height; // set expected height
@@ -744,7 +709,7 @@ class NeuralNetwork {
     else if (typeof bias !== 'number') return reject.handle('Invalid bias type'); // if bias is not a number, throw error
 
     return new Neuron(
-      { population: this.population, network: this, config: this.config, config2: this.config2 },
+      { population: this.population, network: this },
       this.#Neuron.Mover,
       depth,
       y,
@@ -829,9 +794,7 @@ class Neuron {
     this.#depth = depth; // set neuron depth
     this.#y = y; // set neuron y value
 
-    const { min: $min, max: $max } = this.config2.object.neuron.object.bias.object.range.value;
-    this.#bias = bias.clamp($min, $max);
-    // this.#bias = bias.clamp(...Object.values(this.config`get neuron.bias.range`)); // set neuron bias
+    this.#bias = bias.clamp(...config.root.neuron.bias.range[Config.get]()); // set neuron bias
     this.CalculateUpdateFunction(); // calculate neuron value function //TESTME: possible to be private
 
     const neuron = this; // create neuron reference
@@ -862,11 +825,10 @@ class Neuron {
     this.#_(reject); // check neuron existence
 
     if (typeof n !== 'number') return reject.handle('Invalid bias type'); // if bias is not a number, throw error
-    const { min: $min, max: $max } = this.config2.object.neuron.object.bias.object.range.value;
-    this.#bias = n.clamp($min, $max);
-    // this.#bias = n.clamp(...Object.values(this.config`get neuron.bias.range`)); // set neuron bias
 
+    this.#bias = bias.clamp(...config.root.neuron.bias.range[Config.get]()); // set neuron bias
     this.CalculateUpdateFunction(); // calculate neuron value function
+
     return this.#bias; // return neuron bias
   }
 
@@ -1008,7 +970,7 @@ class Neuron {
       if (this.#synapses.output.has(neuron)) return reject.handle('Output synapse already exists'); // if output synapse exists, throw error
 
       const synapse = new Synapse(
-        { population: this.population, network: this.network, neuron: this, config: this.config, config2: this.config2 },
+        { population: this.population, network: this.network, neuron: this },
         this, // input neuron
         neuron, // output neuron
         weight, // synapse weight
@@ -1032,7 +994,7 @@ class Neuron {
       this.CalculateUpdateFunction(); // calculate neuron value function
     }).bind(this),
 
-    Disconnect: (function(y) {
+    Disconnect: (function(y) { // disconnect neuron (y: number)
       const reject = new Rejection('Could not disconnect neurons', 'y', y); // create rejection handler
       this.#_(reject); // check neuron existence
 
@@ -1086,11 +1048,9 @@ class Neuron {
     for (const synapse of this.#synapses.input.values()) // iterate over input synapses
       neurons.push(`neurons[${i++}].value * ${synapse.weight}`); // add input synapse to function
 
-    const $activationFunction = this.config2.object.neuron.object.activation.object.function.value;
-    // const $activationFunction = this.config`get neuron.activation.function`; // get activation function
     this.#updateFunction = new Function('neurons', 'activationFunction', `
       return activationFunction(${neurons.join(' + ') || '0'} + ${this.#bias});
-    `).bind({}, [ ...this.#synapses.input.keys() ],$activationFunction ); // create neuron value function
+    `).bind({}, [ ...this.#synapses.input.keys() ], config.root.neuron.activation.function[Config.get]()); // create neuron value function
   }
 
   Update() { // update neuron value
@@ -1108,7 +1068,7 @@ class Neuron {
     else if (typeof weight !== 'number') return reject.handle('Invalid weight type'); // if weight is not a number, throw error
 
     return new Synapse(
-      { population: this.population, network: this.network, neuron: this, config: this.config, config2: this.config2 }, // pass
+      { population: this.population, network: this.network, neuron: this }, // pass
       this, // input neuron
       neuron, // output neuron
       weight, // synapse weight
@@ -1169,9 +1129,7 @@ class Synapse {
     this.#input = input; // set input neuron
     this.#output = output; // set output neuron
 
-    const { min: $min, max: $max } = this.config2.object.synapse.object.weight.object.range.value;
-    this.#weight = weight.clamp($min, $max);
-    // this.#weight = weight.clamp(...Object.values(this.config`get synapse.weight.range`)); // set synapse weight
+    this.#weight = weight.clamp(...config.root.synapse.weight.range[Config.get]()); // set synapse weight
   }
 
   get id() { this.#_(new Rejection('Could not access synapse id')); return this.#id; } // get synapse id
@@ -1187,9 +1145,7 @@ class Synapse {
     if (typeof n !== 'number') return reject.handle('Invalid weight type'); // if weight is not a number, throw error
 
     const weight = this.#weight; // get synapse weight
-    const { min: $min, max: $max } = this.config2.object.synapse.object.weight.object.range.value;
-    this.#weight = n.clamp($min, $max);
-    // this.#weight = n.clamp(...Object.values(this.config`get synapse.weight.range`)); // set synapse weight
+    this.#weight = weight.clamp(...config.root.synapse.weight.range[Config.get]()); // set synapse weight
 
     if (weight !== this.#weight) {
       this.#input.CalculateUpdateFunction(); // calculate input neuron value function
@@ -1204,12 +1160,13 @@ class Synapse {
     this.#_(reject); // check synapse existence
 
     this.#output.Synapse.input.Delete(this.#input); // delete input synapse
+
+    const debug = window.debug; // save debug status
     try {
-      const debug = window.debug; // save debug status
       window.debug = false; // disable debug so that synapse does not debug
       this.#input.Synapse.output.Delete(this.#output); // delete output synapse
-      window.debug = debug; // reset debug status
-    } catch { } // if output synapse does not exist, ignore error
+    } catch { } // ignore errors
+    finally { window.debug = debug; } // restore debug status
 
     ID.delete('synapse', this.#id); // delete synapse id
     this.#id = undefined; // reset synapse id

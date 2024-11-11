@@ -17,530 +17,358 @@
 import RejectionHandler from './debug.mjs';
 
 export default class Config {
-  static direct = '$direct';
-  static value = '$value';
-  static default = '$default';
-  static get = '$get';
-  static set = '$set';
-  static delete = '$delete';
-  static method = '$method';
-  static require = '$require';
-  static disabled = '$disabled';
+  // setters
+  static default = Symbol('default');
 
-  static #Configure(o, classInstance) {
-    const reject = new RejectionHandler('Could not configure object!', o);
+  static value = Symbol('value');
+  static method = Symbol('method');
 
-    if (typeof o === 'object' && o !== null) {
-      const configured = {};
-      let queue = [ [ configured, o, [ '' ] ] ];
-      for ( ; queue.length; ) {
-        const [ parent, child, path ] = queue.shift();
-        const { obj, children } = Config.#Templatify(child, path, classInstance);
+  static getter = Symbol('getter');
+  static setter = Symbol('setter');
+  static deleter = Symbol('deleter');
 
-        parent[path[path.length - 1]] = obj;
-        queue = queue.concat(children);
-      }
+  static filter = Symbol('filter');
+  static disabler = Symbol('disabler');
 
-      return configured[''];
-    } else reject.handle('Invalid object!');
+  // getters
+  static get = Symbol('get');
+  static set = Symbol('set');
+  static delete = Symbol('delete');
+
+  static test = Symbol('test');
+
+  static call = Symbol('call');
+
+  static isDisabled = Symbol('isDisabled');
+  static isDefined = Symbol('isDefined');
+
+  static isGettable = Symbol('isGettable');
+  static isSettable = Symbol('isSettable');
+  static isDeletable = Symbol('isDeletable');
+  static isCallable = Symbol('isCallable');
+
+  static hasDefault = Symbol('hasDefault');
+  static hasValue = Symbol('hasValue');
+  static hasMethod = Symbol('hasMethod');
+  static hasGetter = Symbol('hasGetter');
+  static hasSetter = Symbol('hasSetter');
+  static hasDeleter = Symbol('hasDeleter');
+  static hasFilter = Symbol('hasFilter');
+  static hasDisabler = Symbol('hasDisabler');
+
+  // private
+  static #defined = Symbol('defined');
+  static #default = Symbol('default');
+  static #value = Symbol('value');
+  static #method = Symbol('method');
+  static #getter = Symbol('getter');
+  static #setter = Symbol('setter');
+  static #deleter = Symbol('deleter');
+  static #filter = Symbol('filter');
+  static #disabler = Symbol('disabler');
+
+  #config; // create config
+  constructor(o, put) {
+    this.#config = this.#Configure(o); // configure object
+    if (put) this.put(put); // put object
   }
 
-  static #Templatify(o, path, classInstance) {
-    const reject = new RejectionHandler(`${path.join(' > ')}: Could not templatify object!`, o, path);
+  get root() { return this.#config; } // get root
 
-    const k = path[path.length - 1];
-    const template = {
-      value: { __defined__: false },
-      object: { },
-      method: { },
-    };
+  put(o) { // configure object with reference (o: object)
+    const reject = new RejectionHandler('Failed to put object on config.', 'object', o);
 
-    { // value
-      template.value.has = (function() { return 'value' in this; }).bind(template.value);
-      template.value.get = (function(o, p, k, ...args) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (value [[get]]): Could not get value!`, o, p, k, this, args);
+    if (typeof o !== 'object' || o === null) // if o is not an object or is null
+      reject.handle('The object must be a valid object.'); // throw error
 
-        const v = o.get(reject); // get value with error handling and default handling
-        if ('__getter__' in this) return this.__getter__.call({}, v, reject, classInstance, ...args); // apply getter if it exists
-        return v;
-      }).bind(template.value, template, path, k);
-      template.value.set = (function(o, p, k, v, ...args) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (value [[set]]): Could not set value!`, o, p, k, v, this, args);
+    let q = [ [ this.#config, o, [ '' ] ] ]; // create queue with this.#config, o, and path
+    for ( ; q.length; ) { // while q is not empty
+      const [ parent, child, path ] = q.shift(); // get parent, child, and path from queue
+      if (Config.value in child) // if value is in child
+        parent[Config.set](child[Config.value]); // set value
 
-        const raw = v; // FIX not used
-        if ('__setter__' in this) v = this.__setter__.call({}, v, reject, classInstance, ...args); // apply setter if it exists
-        o.set(v, true, reject, raw); // set value with error handling and requirement handling
-
-        return v;
-      }).bind(template.value, template, path, k);
-      template.value.delete = (function(o, p, k, ...args) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (value [[delete]]): Could not delete value!`, o, p, k, this, args);
-
-        if (!('__deleter__' in this) || this.__deleter__.call({}, reject, classInstance, ...args))
-          o.set(undefined, false, reject); // delete value with error handling and requirement handling
-        else if (!('value' in this)) reject.handle('No value attribute to delete!');
-      }).bind(template.value, template, path, k);
-      template.value.defined = (function(o, p) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (value [[defined]]): Could not check if value is defined!`, o, p);
-
-        if (!('value' in this)) reject.handle('No value attribute to check!'); // if value attribute does not exist
-        return this.__defined__;
-      }).bind(template.value, template, path);
+      for (const k in child) // for each key in child
+        if (typeof k === 'symbol') // if key is a symbol
+          reject.handle('Child cannot have symbol keys.', 'parent', parent, 'child', child, 'path', path, 'key', k); // throw error
+        else if (typeof child[k] === 'object' && child[k] !== null) { // if key is an object and is not null
+          if (k in parent) // if k is in parent
+            q.push([ parent[k], child[k], [ ...path, k ] ]); // push parent[k], child[k], and [ ...path, k ] to queue
+          else reject.handle('Child key not found in parent.', 'parent', parent, 'child', child, 'path', path, 'key', k); // throw error
+        } else reject.handle('Child must be an object (not null).', 'parent', parent, 'child', child, 'path', path, 'key', k); //
     }
-    template.get = (function(reject) {
-      if ('value' in this.value) { // if value attribute exists
-        if (this.value.__defined__) return this.value.value; // return value if defined
-        else if ('__default__' in this.value) return this.value.default; // return default if not defined
-        else reject.handle('Undefined value with no default for fallback!');
-      } else throw new Error('No value attribute to get!');
-    }).bind(template);
-    template.set = (function(v, defined, reject, raw) {
-      if ('value' in this.value) { // if value attribute exists
-        if (this.require(v, defined)) {
-          this.value.__input__ = raw; // set input // FIX not used
 
-          this.value.value = v; // set value
-          this.value.__defined__ = defined; // set defined
-        } else reject.handle('Value does not meet requirements!');
-      } else reject.handle(`No value attribute to ${defined ? 'set' : 'delete'}!`);
-    }).bind(template);
+    return this.#config; // return this.#config
+  }
 
-    { // object
-      template.object.has = (function() { return 'value' in this; }).bind(template.object);
-      template.object.get = (function(o, p, k) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (object [[get]]): Could not get object!`, o, p, k, classInstance);
+  #Configure(o) { // configure object (o: object)
+    const reject = new RejectionHandler('Failed to configure object.', 'object', o);
 
-        if (!('value' in this)) reject.handle('No object attribute to get!');
+    if (typeof o !== 'object' || o === null) // if o is not an object or is null
+      reject.handle('The object must be a valid object.'); // throw error
 
-        const rtn = {};
-        const queue = [ [ rtn, '', o ] ];
-        function Format(parent, key, child) {
-          const obj = {};
+    function def(parent, k, o, toDelete) { // define property (parent: object, k: string, o: object, toDelete: boolean)
+      Object.defineProperty(parent, k, o); // define property
+      if (toDelete) // if toDelete is true
+        delete o.value; // delete value
+    }
 
-          try {
-            const debug = window.debug;
-            window.debug = false;
-            obj.value = child.value.get(); // get value of child node
-            window.debug = debug;
-          } catch (e) { };
+    const config = {}; // create config object
+    let q = [ [ config, o, [ '' ] ] ]; // create queue with config, o, and path
+    for ( ; q.length; ) { // while q is not empty
+      const [ parent, child, path ] = q.shift(); // get parent, child, and path from queue
+      const configured = Object.defineProperties({}, { // create configured object
+        [Config.#defined]: { value: false, enumerable: false, writable: true }, // define defined
+        [Config.#default]: { value: child[Config.default], enumerable: false, writable: true }, // define default
+        [Config.#value]: { value: child[Config.value], enumerable: false, writable: true }, // define value
+        [Config.#method]: { value: child[Config.method], enumerable: false }, // define method
+        [Config.#getter]: { value: child[Config.getter], enumerable: false }, // define getter
+        [Config.#setter]: { value: child[Config.setter], enumerable: false }, // define setter
+        [Config.#deleter]: { value: child[Config.deleter], enumerable: false }, // define deleter
+        [Config.#filter]: { value: child[Config.filter], enumerable: false }, // define filter
+        [Config.#disabler]: { value: child[Config.disabler], enumerable: false } // define disabler
+      });
 
-          if ('value' in child.object) { // if object attribute exists
-            obj.object = {}; // create object attribute
-            for (const [ k, v ] of Object.entries(child.object.value)) // iterate over object attribute
-              queue.push([ obj.object, k, v ]); // push child node to queue
+      function has(k) { // has key (k: string)
+        return configured[k] !== undefined; // return true if configured[k] is not undefined
+      }
+
+      const ks = [ 'Default', 'Value', 'Method', 'Getter', 'Setter', 'Deleter', 'Filter', 'Disabler' ]; // create keys
+      for (const k of ks) // for each key
+        if (Config[k.toLowerCase()] in child) // if key is in child
+          def(configured, Config[`has${k}`], { // define has key
+            get() { return true; }, // define key getter
+            enumerable: false,
+          }, true); // delete value
+        else
+          def(configured, Config[`has${k}`], { // define has key
+            get() { return false; }, // define key getter
+            enumerable: false,
+          }, true); // delete value
+
+      if (!has(Config.#disabler)) // if disabler is not defined
+        def(configured, Config.isDisabled, {
+          get() { return false; } // define isDisabled getter
+        });
+      else if (typeof configured[Config.#disabler] === 'function')
+        def(configured, Config.isDisabled, {
+          get() { return configured[Config.#disabler].call({ root: config[''], local: configured }); } // define isDisabled getter
+        });
+      else reject.handle('Disabler must be a function or undefined.', 'parent', parent, 'child', child, 'path', path, 'disabler', configured[Config.#disabler]); // throw error
+
+      if ((!has(Config.#getter) && configured[Config.#getter] !== false) || has(Config.#value) || has(Config.#default)) // if getter is not defined and getter is not false or value or default is defined
+        def(configured, Config.isGettable, {
+          get() { return !configured[Config.isDisabled] } // define isGettable getter
+        });
+      else
+        def(configured, Config.isGettable, {
+          get() { return false; } // define isGettable getter
+        });
+
+      if ((has(Config.#setter) && configured[Config.#setter] !== false) || has(Config.#value)) // if setter is defined and setter is not false or value is defined
+        def(configured, Config.isSettable, {
+          get() { return !configured[Config.isDisabled] } // define isSettable getter
+        });
+      else
+        def(configured, Config.isSettable, {
+          get() { return false; } // define isSettable getter
+        });
+
+      if (has(Config.#deleter) && configured[Config.#deleter] !== false && has(Config.#value)) // if deleter is defined and value is defined
+        def(configured, Config.isDeletable, {
+          get() { return !configured[Config.isDisabled] } // define isDeletable getter
+        });
+      else
+        def(configured, Config.isDeletable, {
+          get() { return false; } // define isDeletable getter
+        });
+
+      if (has(Config.#method))
+        def(configured, Config.isCallable, {
+          get() { return !configured[Config.isDisabled] } // define isCallable getter
+        });
+      else
+        def(configured, Config.isCallable, {
+          get() { return false; } // define isCallable getter
+        });
+
+      if (configured[Config.#getter] === false)
+        def(configured, Config.get, {
+          value() { reject.handle('Property is not gettable.', 'parent', parent, 'child', child, 'path', path); } // define get
+        });
+      else if (has(Config.#getter) && typeof configured[Config.#getter] === 'function')
+        def(configured, Config.get, {
+          value() {
+            const disabled = configured[Config.isDisabled]; // get isDisabled
+            if (disabled) // if isDisabled is true
+              reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
+
+            const v = configured[Config.#defined] ? configured[Config.#value] : configured[Config.#default]; // get value or default
+            return configured[Config.#getter].call({ root: config[''], local: configured }, v); // return value or default
           }
+        });
+      else if (!has(Config.#getter) || configured[Config.#getter] === true) {
+        if (has(Config.#value))
+          def(configured, Config.get, {
+            value() { // define get
+              const disabled = configured[Config.isDisabled]; // get isDisabled
+              if (disabled) // if isDisabled is true
+                reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
 
-          parent[key] = obj; // set object attribute
-        }
+              return configured[Config.#defined] ? configured[Config.#value] : configured[Config.#default]; // return value or default
+            }
+          });
+        else if (has(Config.#default))
+          def(configured, Config.get, {
+            value() { // define get
+              const disabled = configured[Config.isDisabled]; // get isDisabled
+              if (disabled) // if isDisabled is true
+                reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
 
-        for ( ; queue.length; ) Format(...queue.shift()); // format object
+              return configured[Config.#default]; // return value or default
+            }
+          });
+        else if (!has(Config.#getter))
+          def(configured, Config.get, {
+            value() { reject.handle('Property is not gettable.', 'parent', parent, 'child', child, 'path', path); } // define get
+          });
+        else reject.handle('Value or default must be defined for getter to be true.', 'parent', parent, 'child', child, 'path', path); // throw error
+      } else reject.handle('Getter must be a function, boolean, or undefined.', 'parent', parent, 'child', child, 'path', path); // throw error
 
-        return rtn[''];
-      }).bind(template.object, template, path, k);
-    }
+      if (configured[Config.#setter] === false)
+        def(configured, Config.set, {
+          value() { reject.handle('Property is not settable.', 'parent', parent, 'child', child, 'path', path); } // define set
+        });
+      else if (has(Config.#setter) && typeof configured[Config.#setter] === 'function')
+        def(configured, Config.set, {
+          value(v) {
+            const disabled = configured[Config.isDisabled]; // get isDisabled
+            if (disabled) // if isDisabled is true
+              reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
 
-    { // method
-      template.method.has = (function() { return 'value' in this; }).bind(template.method);
-      template.method.call = (function(o, p, k, ...args) {
-        const reject = new RejectionHandler(`${p.join(' > ')} (method [[call]]): Could not call method!`, o, p, k, this, args);
+            v = configured[Config.#setter].call({ root: config[''], local: configured }, v); // set value
+            if (!configured[Config.test](v)) // if test fails
+              reject.handle('Value failed test.', 'parent', parent, 'child', child, 'path', path, 'value', v); // throw error
 
-        if (!('value' in this)) reject.handle('No method attribute to call!');
+            configured[Config.#value] = v; // set value
+            configured[Config.#defined] = true; // set defined
+          }
+        });
+      else if (!has(Config.#setter) || configured[Config.#setter] === true) {
+        if (has(Config.#value))
+          def(configured, Config.set, {
+            value(v) { // define set
+              const disabled = configured[Config.isDisabled]; // get isDisabled
+              if (disabled) // if isDisabled is true
+                reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
+              else if (!configured[Config.test](v)) // if test fails
+                reject.handle('Value failed test.', 'parent', parent, 'child', child, 'path', path, 'value', v); // throw error
 
+              configured[Config.#value] = v; // set value
+              configured[Config.#defined] = true; // set defined
+            }
+          });
+        else if (!has(Config.#setter))
+          def(configured, Config.set, {
+            value() { reject.handle('Property is not settable.', 'parent', parent, 'child', child, 'path', path); } // define set
+          });
+        else reject.handle('Value must be defined for setter to be true.', 'parent', parent, 'child', child, 'path', path); // throw error
+      } else reject.handle('Setter must be a function, boolean, or undefined.', 'parent', parent, 'child', child, 'path', path); // throw error
+
+      if (!has(Config.#deleter) || configured[Config.#deleter] === false)
+        def(configured, Config.delete, {
+          value() { reject.handle('Property is not deletable.', 'parent', parent, 'child', child, 'path', path); } // define delete
+        });
+      else if (has(Config.#deleter) && typeof configured[Config.#deleter] === 'function')
+        def(configured, Config.delete, {
+          value() {
+            const disabled = configured[Config.isDisabled]; // get isDisabled
+            if (disabled) // if isDisabled is true
+              reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
+
+            if (configured[Config.#deleter].call({ root: config[''], local: configured }, configured[Config.#value])) // if deleter returns true
+              configured[Config.#defined] = false; // set defined
+          }
+        });
+      else if (configured[Config.#deleter] === true) {
+        def(configured, Config.delete, {
+          value() { // define delete
+            const disabled = configured[Config.isDisabled]; // get isDisabled
+            if (disabled) // if isDisabled is true
+              reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
+
+            configured[Config.#defined] = false; // set defined
+          }
+        });
+      } else reject.handle('Deleter must be a function, boolean, or undefined.', 'parent', parent, 'child', child, 'path', path); // throw error
+
+      if (has(Config.#filter) && typeof configured[Config.#filter] === 'function')
+        def(configured, Config.test, {
+          value(v) {
+            return configured[Config.#filter].call({ root: config[''], local: configured }, v);
+          } // define test
+        });
+      else if (has(Config.#filter))
+        reject.handle('Filter must be a function or undefined.', 'parent', parent, 'child', child, 'path', path); // throw error
+      else
+        def(configured, Config.test, {
+          value() { return true; } // define test
+        });
+
+      if (has(Config.#method) && typeof configured[Config.#method] === 'function')
+        def(configured, Config.call, {
+          value(...args) {
+            const disabled = configured[Config.isDisabled]; // get isDisabled
+            if (disabled) // if isDisabled is true
+              reject.handle(`Property is disabled with reason: ${disabled}`, 'parent', parent, 'child', child, 'path', path); // throw error
+
+            return configured[Config.#method].call({ root: config[''], local: configured }, ...args); // call method
+          }
+        });
+      else if (has(Config.#method))
+        reject.handle('Method must be a function or undefined.', 'parent', parent, 'child', child, 'path', path); // throw error
+      else
+        def(configured, Config.call, {
+          value() { reject.handle('No method defined.', 'parent', parent, 'child', child, 'path', path); } // define call
+        });
+
+      if (has(Config.#default) && has(Config.#setter)) {
         let v;
         try {
-          v = template.value.get(); // get value
-        } catch {
-          try {
-            v = o.get(reject); // get value with error handling and default handling
-          } catch { }
-        }
+          v = configured[Config.#setter].call({ root: config[''], local: configured }, configured[Config.#default]); // set default
+        } catch (e) {
+          reject.handle(`Setter rejected default for reason: ${e}`, 'parent', parent, 'child', child, 'path', path, 'default', configured[Config.#default], 'error', e); // throw error
+        } // catch error
 
-        return this.value.call({}, v, reject, classInstance, ...args); // call method
-      }).bind(template.method, template, path, k);
-    }
+        if (!configured[Config.test](v)) // if test fails
+          reject.handle('Default failed filter test.', 'parent', parent, 'child', child, 'path', path, 'default', configured[Config.#default]); // throw error
 
-    template.require = (function(v, defined = true) {
-      const reject = new RejectionHandler('Could not check if value meets requirements!', v, defined);
-      if ('__requirement__' in this) return this.__requirement__.call({}, v, defined, reject, classInstance); // apply requirement if it exists
-      else return true;
-    }).bind(template);
-    if ('$require' in o) template.__requirement__ = Config.#FormatRequirement(o.$require, reject); // format requirement if it exists
-
-    template.disabled = (function() {
-      const reject = new RejectionHandler('Could not check if object is disabled!');
-
-      if ('__disabled__' in this) { // if disabled attribute exists
-        const rtn = this.__disabled__.call({}, classInstance); // get disabled and reason
-        if (rtn === true) return { disabled: true, reason: 'No reason provided!' }; // return disabled and reason if disabled and no reason
-        else if (rtn === false) return { disabled: false }; // return not disabled if not disabled
-        else if (typeof rtn === 'string') return { disabled: true, reason: rtn }; // return disabled and reason if disabled and valid reason
-        else reject.handle('Invalid reason for disabling!', rtn); // handle invalid reason for disabling
+        configured[Config.#default] = v; // set default
       }
 
-      return false; // return false if not disabled or no disabled attribute
-    }).bind(template);
+      if (has(Config.#value) && has(Config.#setter)) {
+        let v;
+        try {
+          v = configured[Config.#setter].call({ root: config[''], local: configured }, configured[Config.#value]); // set value
+        } catch (e) {
+          reject.handle(`Setter rejected value for reason: ${e}`, 'parent', parent, 'child', child, 'path', path, 'value', configured[Config.#value], 'error', e); // throw error
+        } // catch error
 
-    const rtn = { obj: template, children: [] };
-    for (let [ k, v ] of Object.entries(o)) { // iterate over object
-      if (k[0] === '$') // specialty keys
-        switch (k) {
-          case '$direct': { // __direct__
-            if (typeof v === 'string') template.__direct__ = v; // set direct if it is a string
-            else reject.handle('Invalid direct (not <string>)!', v);
-          } break;
+        if (!configured[Config.test](v)) // if test fails
+          reject.handle('Value failed filter test.', 'parent', parent, 'child', child, 'path', path, 'value', configured[Config.#value]); // throw error
 
-          case '$value': { // value.value
-            if (true || template.require(v)) { // if value meets requirements //FIX: temporary fix
-              template.value.value = v; // set value
-              template.value.__defined__ = true; // set defined
-            } else reject.handle('Value does not meet requirements!', v, template.require.toString());
-          } break;
-          case '$default': { // value.__default__
-            if (true || template.require(v, false)) template.value.__default__ = v; // set default if it meets requirements //FIX: temporary fix
-            else reject.handle('Default does not meet requirements!', v, template.require.toString());
-          } break;
-
-          case '$get':
-          case '$set':
-          case '$delete': {
-            let fnName;
-            switch (k) { // allow handling of getter, setter, or deleter
-              case '$get': fnName = 'getter'; break;
-              case '$set': fnName = 'setter'; break;
-              case '$delete': fnName = 'deleter'; break;
-            }
-
-            if (typeof v === 'function') template.value[`__${fnName}__`] = v; // set getter, setter, or deleter if it is a function
-            else if (v === false)
-              template.value[`__${fnName}__`] = function(_, reject) { reject.handle(`No ${fnName} for value!`); }; // set getter, setter, or deleter to throw error if false
-            else reject.handle(`Invalid ${fnName} (not <function> or [false])!`, v);
-          } break;
-
-          case '$method': { // method.value
-            if (typeof v === 'function') template.method.value = v; // set method if it is a function
-            else reject.handle('Invalid method (not <function>)!', v);
-          } break;
-
-          case '$require': break; // handled above
-          case '$disabled': { // object.__disabled__
-            if (typeof v === 'function') template.__disabled__ = v; // set disabled if it is a function
-            else reject.handle('Invalid disabled (not <function>)!', v);
-          } break;
-
-          default: reject.handle('Unexpected key after specialty key ("$")!', k);
-        }
-      else {
-        template.object.value ??= {}; // create object attribute if it does not exist
-        if (k.match(/[$.?>\s]/)) reject.handle('Invalid key (contains reserved characters ["$", "?", ".", ">"] or whitespace)!', k);
-        else if (typeof v === 'object' && v !== null) rtn.children.push([ template.object.value, v, [ ...path, k ] ]); // push child node to queue
-        else reject.handle('Invalid value (not <object>)!', v);
-      }
-    }
-
-    return rtn;
-  }
-
-  static #FormatRequirement(req, reject) {
-    switch (typeof req) {
-      case 'function': return req;
-      case 'string': req = [ req ]; break;
-    }
-
-    if (Array.isArray(req)) {
-      let comparison = new Set();
-      const add = (...eqs) => eqs.forEach(eq => comparison.add(`(${eq})`));
-
-      for (const cond of req) {
-        switch (cond) {
-          case 'bigint':
-          case 'boolean':
-          case 'function':
-          case 'number':
-          case 'object':
-          case 'string':
-          case 'symbol':
-          case 'undefined': add(`type === '${cond}'`); break;
-
-          case 'array': add('Array.isArray(value)'); break;
-          case 'falsy': add('!value'); break;
-          case 'finite': add('Number.isFinite(value)'); break;
-          case 'integer': add('Number.isInteger(value)'); break;
-          case 'NaN': add('Number.isNaN(value)'); break;
-          case 'null': add('value === null'); break;
-          case 'nullish': add('value === null', 'value === undefined'); break;
-          case 'Object': add('type === "object" && value !== null'); break;
-          case 'primitive': add('value !== Object(value)'); break;
-          case 'truthy': add('!!value'); break;
-
-          case 'deleted': add('!defined'); break;
-
-          default: reject.handle('Unexpected requirement!', req, cond);
-        }
+        configured[Config.#value] = v; // set value
       }
 
-      return new Function('value', 'defined', `
-        const type = typeof value;
-        return ${[ ...comparison ].join(' || ')};
-      `);
-    } else reject.handle('Invalid requirement format (not <function>, <string>, or <array>)!', req);
-  }
+      if (has(Config.#value)) // if value is defined
+        configured[Config.#defined] = true; // set defined
 
-  #config = undefined;
-  constructor(o) {
-    const config = this;
-    const fn = function(strs, ...args) {
-      if (Array.isArray(strs)) { // if tagged template literal
-        const reject = new RejectionHandler('Could not execute command!', strs, args);
-
-        const actionLine = [];
-        let combine = '';
-        for (let i = 0; i < args.length + 1; i++) { // iterate over strings and arguments
-          const str = combine + strs.raw[i]; // combine string with previous string if textify operator was present
-          const actions = str.split(/\s+/); // split string into actions
-
-          if (actions[actions.length - 1].endsWith('>') && i < args.length) { // if textify operator is present
-            actions[actions.length - 1] = actions[actions.length - 1].slice(0, -1); // remove textify operator
-            combine = actions.join(' ') + `${args[i]}`; // combine actions with argument
-            continue;
-          }
-
-          actionLine.push( // push actions to action line
-            ...actions
-              .filter(a => a) // filter out empty strings
-              .map(function(a) { // map actions to functions
-                if (a.includes('>')) reject.handle('Illegal use of textify operator (">")', strs, args);
-                else return { type: 'text', value: a }; // return text action
-              })
-          );
-          if (i < args.length) actionLine.push({ type: 'value', value: args[i] }); // push argument to action line if not last
-        }
-
-        function RecursiveFind(o, cmd) {
-          function validate(obj) {
-            const disabled = obj.disabled(); // check if object is disabled
-            if (disabled.disabled) reject.handle(`Object is disabled! (${disabled.reason})`); // handle disabled object
-
-            return obj;
-          }
-
-          if (o === undefined) return reject.handle('Could not direct to path valid for command!', actionLine);
-
-          let first = true;
-          do {
-            if (first) first = false;
-            else o = o.object.value[o.__direct__]; // get next (directed) object if not first iteration
-
-            switch (cmd) {
-              case 'value?': if ('has' in o.value) return validate(o).value.has;
-              case 'object?': if ('has' in o.object) return validate(o).object.has;
-              case 'method?': if ('has' in o.method) return validate(o).method.has;
-
-              case 'get': if ('get' in o.value) return validate(o).value.get; break;
-              case 'has': if ('defined' in o.value) return validate(o).value.defined; break;
-              case 'set': if ('set' in o.value) return validate(o).value.set; break;
-              case 'delete': if ('delete' in o.value) return validate(o).value.delete; break;
-
-              case 'parse': if ('get' in o.object) return validate(o).object.get; break;
-              // case 'root': break;
-
-              case 'run': if ('call' in o.method) return validate(o).method.call; break;
-
-              default: reject.handle('Unexpected command!', cmd);
-            }
-          } while ('__direct__' in o);
-
-          reject.handle('Could not direct to path valid for command!', actionLine);
-        }
-
-        let i = -1;
-        function get(type = '*', advance = true) { // get next action
-          if ((++i) < actionLine.length) { // if not end of line
-            if (type === '*' || actionLine[i].type === type) { // if type matches
-              if (advance) return actionLine[i].value; // if advancing; return value
-              else return actionLine[i--].value; // if not advancing; return value and decrement index
-            } else if (advance)
-              reject.handle(`Invalid type (${actionLine[i].type}) at index (${i}); expected type (${type})`, actionLine, i); // if advancing; reject invalid type
-            else
-              reject.handle(`Invalid type (${actionLine[i].type}) at index (${i}); expected type (${type})`, actionLine, i--); // if not advancing; reject invalid type and decrement index
-          } else reject.handle('Unexpected end of line', actionLine);
-        }
-
-        function Evaluate() {
-          if (i >= actionLine.length - 2) reject.handle('Expected command and object; found end of line!', actionLine);
-
-          const cmd = get('text');
-          const obj = (function(action) {
-            if (action === '$') return config.#config; // if root
-            else if (action.endsWith('?')) // safe mode
-              return action
-                .slice(0, -1) // remove safe mode operator
-                .split('.') // split path into keys
-                .reduce((o, k) => o.object?.value?.[k], config.#config); // get object by path if it exists
-            else try {
-              return action
-                .split('.') // split path into keys
-                .reduce((o, k) => o.object.value[k], config.#config); // get object by path
-            } catch (e) { reject.handle('Invalid path!', action); } // handle invalid path
-          })(get('text'));
-
-          const actionSet = {
-            cmd,
-            obj,
-            fn: RecursiveFind(obj, cmd), // get function by command with direct handling
-            extras: (function(extras) {
-              switch (cmd) {
-                case 'set': {
-                  const action = get('text');
-                  if (action === 'to') {
-                    if (i === actionLine.length - 1) reject.handle('Unexpected end of line after "to"!', actionLine);
-                    else extras.push(get());
-                  } else reject.handle(`Expected "to" after "set"; found "${action}"!`, actionLine);
-                } // fallthrough
-
-                default: return extras;
-              }
-            })([]),
-            options: (function(o) {
-              while (i < actionLine.length - 1) {
-                switch (get('text', false)) {
-                  case '@': {
-                    if (++i === actionLine.length - 1) reject.handle('Unexpected end of line after "@"!', actionLine);
-                    else {
-                      const time = get();
-                      if (time instanceof Date) o.time = Date.now() - time.getTime();
-                      else o.time = +time;
-                    }
-                  } break;
-                  /* case 'every': {
-                    if (cmd !== 'run') reject.handle('Unexpected option "every"!', actionLine);
-                    else if (++i === actionLine.length - 1) reject.handle('Unexpected end of line after "every"!', actionLine);
-                    else o.every = +get();
-                  } break; */
-                  case 'with': {
-                    let action;
-                    if (cmd !== 'run' && cmd !== 'get' && cmd !== 'delete') reject.handle('Unexpected option "with"!', actionLine);
-                    else do {
-                      if (++i === actionLine.length - 1) reject.handle('Unexpected end of line after "with"!', actionLine);
-                      else o.parameters.push(get());
-
-                      try {
-                        if (i < actionLine.length - 1) action = get('text', false);
-                      } catch (e) { break; }
-                    } while (action === ',');
-                  } break;
-
-                  case 'then': {
-                    if (i < actionLine.length - 1) o.then = true;
-                    else reject.handle('Unexpected end of line after "then"!', actionLine);
-                  } return o;
-
-                  default: reject.handle('Unexpected option!', actionLine);
-                }
-              }
-
-              return o;
-            })({ then: false, parameters: [] }),
-          };
-
-          const opt = k => actionSet.options[k]; // shorthand for options
-          const params = actionSet.extras.concat(opt('parameters')); // get parameters
-
-          if (opt('time') === undefined) { // if instant
-            if (opt('then')) {
-              actionSet.fn(...params); // if instant and not end of chain
-              return Evaluate();
-            } else return actionSet.fn(...params); // if instant and end of chain
-          } else return new Promise(res => setTimeout(() => {
-            if (opt('then')) {
-              actionSet.fn(...params); // if delayed and not end of chain
-              res(Evaluate());
-            } else res(actionSet.fn(...params)); // if delayed and end of chain
-          }, opt('time')));
-        }
-
-        return Evaluate();
-      } else if (typeof strs === 'object' && strs !== null) { // use config as template for passed object
-        const reject = new RejectionHandler('Could not execute config handler!', strs);
-
-        function RecursiveFind(o, k) {
-          function validate(obj) {
-            const disabled = obj.disabled(); // check if object is disabled
-            if (disabled.disabled) reject.handle(`Object is disabled! (${disabled.reason})`); // handle disabled object
-
-            return obj;
-          }
-
-          let first = true;
-          do {
-            if (first) first = false;
-            else o = o.object.value[o.__direct__]; // get next (directed) object if not first iteration
-
-            if ('set' in o.value) return validate(o).value.set; break;
-          } while ('__direct__' in o);
-
-          reject.handle('Could not direct to path valid for setting!', k);
-        }
-
-        const queue = [ [ config.#config, strs ] ];
-        function Recurse(parent, o) {
-          for (const [ k, v ] of Object.entries(o)) {
-            if (k.startsWith('$')) {
-              let parent2;
-              if (k === '$') parent2 = parent;
-              else {
-                const k2 = k.slice(1);
-                if (k2 in parent.object.value) parent2 = parent.object.value[k2];
-                else reject.handle('Invalid path!', k, parent.object);
-              }
-
-              const setter = RecursiveFind(parent2, k);
-              try {
-                setter(v);
-              } catch (e) { reject.handle(`Could not set value! (${e})`, v, e); }
-            } else if (typeof v === 'object' && v !== null) {
-              const obj = parent.object.value;
-              if (k in obj) queue.push([ obj[k], v ]);
-              else reject.handle('Invalid path!', k);
-            } else reject.handle('Invalid value (not <object>) or specialty key!', v, k);
-          }
-        }
-
-        for ( ; queue.length; ) Recurse(...queue.shift());
-      } else new RejectionHandler('Could not execute config handler!', strs, args).handle('Invalid input!');
+      parent[path.last] = configured; // set parent[path.last] to configured
+      for (const k in child) // for each key in child
+        if (typeof child[k] === 'object' && child[k] !== null) // if key is an object and is not null
+          q.push([ configured, child[k], [ ...path, k ] ]); // push configured, child[k], and path to queue
+        else reject.handle('Child must be an object (not null).', 'parent', parent, 'child', child, 'path', path, 'key', k); // throw error
     }
 
-    this.#config = Config.#Configure(o, fn);
-    return fn;
+    return config['']; // return config
   }
 };
-
-/*
-  Shell Commands:
-
-  <text>:
-    type "text"
-
-  <value>:
-    type "value"
-
-  <segment>:
-    type "text" | type "value"
-
-  <command_set>:
-    <inner_command>* <command>
-
-  <command>:
-    <base> <options>?
-
-  <inner_command>:
-    <command> then
-
-  <options>:
-    @ <value> |
-    every <segment>
-
-  <base>:
-    (value?|object?|method?|has|parse) <path> |
-    (set) <path> to <segment> |
-    (get|delete|run) <path> (with <segment>(,<segment>)*)?
-*/

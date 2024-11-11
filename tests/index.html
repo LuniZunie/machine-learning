@@ -24,35 +24,60 @@
     <script src='../release/machine_learning.mjs' type='module'></script>
     <script type='module'>
       import Population from '../release/machine_learning.mjs';
+      import Config from '../release/module/config.mjs';
 
-      const population = new Population();
-      population.Start();
-      let scores = [];
-      population.Output(function(index, ...outputs) {
-        if (!Number.isNaN(outputs[0])) {
-          scores.push(outputs[0]);
+      const population = new Population({
+        population: {
+          size: {
+            [Config.value]: 100,
+          }
+        },
+
+        network: {
+          dynamic: {
+            [Config.value]: true,
+          },
+
+          inputs: {
+            [Config.value]: 2,
+          },
+
+          outputs: {
+            [Config.value]: 1,
+          },
+        },
+
+        mutate: {
+          adapt: {
+            [Config.value]: true,
+          }
         }
       });
-      population.Input(function(index) {
-        return [ 0.5 ];
-      });
-      console.log(μ(scores));
+      population.Start();
 
-      for (let i = 0; i < 100; i++) {
+      let scores = [];
+      population.Output(function(index, ...outputs) {
+        if (!Number.isNaN(outputs[0]))
+          scores.push(outputs[0]);
+      });
+
+      for (let i = 1; i <= 100; i++) {
         population.Evolve();
         scores = [];
-        population.Input(function(index) {
-          return [ 0.5 ];
-        });
 
-        console.log(μ(scores));
+        for (let j = 0; j < 10; j++)
+          population.Input(function(index) {
+            return [ Math.random(), Math.random() ];
+          });
+
+        console.log(i, μ(scores));
       }
 
       function next() {
         population.Evolve();
         scores = [];
         population.Input(function(index) {
-          return [0.5];
+          return [ Math.random(), Math.random() ];
         });
 
         console.log(μ(scores));
