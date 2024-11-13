@@ -14,7 +14,8 @@
   limitations under the License.
 */
 
-import { Config, Population } from '../release/machine_learning_old.mjs';
+import Population from '../release/machine_learning.mjs';
+import Config from '../release/module/config.mjs';
 
 const Scene = {
   width: 1000,
@@ -22,7 +23,7 @@ const Scene = {
   pipe: [ 1, Math.min(0.9, Math.max(0.1, Math.random())) ],
   pipeScale: {
     width: 100,
-    height: 100,
+    height: 200,
   },
 
   holeBoundingBox: {
@@ -40,18 +41,50 @@ const Scene = {
 
   distance: 0,
   countDown: 0,
-
-  population: new Population(new Config({
-    population: {
-      size: 50,
-    },
-    network: {
-      layers: [ 2, 2, 1 ],
-    }
-  })),
 };
 
-Scene.population.start();
+const population = new Population({
+  population: {
+    size: {
+      [Config.value]: 100,
+    }
+  },
+
+  network: {
+    dynamic: {
+      [Config.value]: true,
+    },
+
+    inputs: {
+      [Config.value]: 2,
+    },
+
+    outputs: {
+      [Config.value]: 1,
+    },
+
+    reward: {
+      function: {
+        [Config.value](i, ...outputs) {
+          const bird = [ ...Scene.birds.values() ][i];
+          bird.save();
+          if (outputs[0] > 0.5) bird.flap();
+          // else bird.downFlap();
+          const reward = 1 - Math.abs(bird.y / Scene.height - Scene.pipe[1]);
+          bird.restore();
+          return reward;
+        }
+      }
+    },
+  },
+
+  mutate: {
+    adapt: {
+      [Config.value]: true,
+    }
+  },
+});
+population.Start();
 
 const paper = document.querySelector('canvas#scene');
 paper.width = Scene.width;
@@ -64,6 +97,8 @@ pen.textBaseline = 'middle';
 
 class Bird {
   #i = NaN; // index
+
+  #save;
 
   #ay = 0.5; // acceleration
   #vy = 0; // velocity
@@ -98,6 +133,7 @@ class Bird {
 
   update() {
     this.#y += this.#vy;
+    this.#vy = Math.min(10, this.#vy + this.#ay);
 
     this.#boundingBox.y1 = this.#y - Scene.bird.height / 2;
     this.#boundingBox.y2 = this.#y + Scene.bird.height / 2;
@@ -107,7 +143,7 @@ class Bird {
   }
 
   flap() {
-    this.#vy -= Math.random() * 5;
+    this.#vy = -7;
   }
   downFlap() {
     this.#vy += Math.random() * 5;
@@ -123,7 +159,37 @@ class Bird {
       (this.#boundingBox.y1 < Scene.holeBoundingBox.y1 || this.#boundingBox.y2 > Scene.holeBoundingBox.y2)
     );
   }
+
+  save() {
+    this.#save = {
+      ay: Number(this.#ay),
+      vy: Number(this.#vy),
+      y: Number(this.#y),
+    };
+  }
+
+  restore() {
+    if (this.#save) {
+      this.#ay = this.#save.ay;
+      this.#vy = this.#save.vy;
+      this.#y = this.#save.y;
+
+      this.#save = undefined;
+    }
+  }
 }
+
+population.Output(function(i, ...outputs) {
+  const bird = [ ...Scene.birds.values() ][i];
+  if (outputs[0] > 0.5) bird.flap();
+  // else bird.downFlap();
+
+  bird.update();
+  if (bird.dead) {
+    population.Kill(i);
+    bird.kill();
+  }
+});
 
 let lastFrame = performance.now();
 async function Update() {
@@ -146,17 +212,17 @@ async function Update() {
 
   pen.fillStyle = 'white';
   pen.fillText(`Distance: ${Scene.distance}`, Scene.width / 2, 50);
-  pen.fillText(`Population: ${Scene.birds.size}`, Scene.width / 2, 100);
+  pen.fillText(`Population: ${population.alive}`, Scene.width / 2, 100);
 
   if (Scene.countDown === 0) {
-
     Scene.birds.clear();
-    for (let i = 0; i < Scene.population.size; i++) Scene.birds.add(new Bird(i));
+    const size = population.size;
+    for (let i = 0; i < size; i++) Scene.birds.add(new Bird(i));
 
     Scene.countDown = -1;
   } else if (Scene.countDown > 0) Scene.countDown = Math.max(0, Scene.countDown - δ);
-  else if (Scene.birds.size === 0) {
-    Scene.population.evolve();
+  else if (population.alive === 0) {
+    population.Evolve();
 
     Scene.distance = 0;
     Scene.pipe = [ 1, Math.min(0.9, Math.max(0.1, Math.random())) ];
@@ -164,21 +230,11 @@ async function Update() {
     Scene.countDown = 10;
   }
 
-  const temp = new Set();
-  for (const bird of Scene.birds) {
-    const nn = Scene.population.Network.get(bird.i);
-    nn.reward = 1;
-    nn.input(bird.y / Scene.height - Scene.pipe[1], bird.vy / 10);
-    const output = nn.output();
-    if (output[0] > 0.5) bird.flap();
-    else bird.downFlap();
-
-    bird.update();
-
-    if (!bird.dead) temp.add(bird);
-  }
-
-  Scene.birds = temp;
+  if (Scene.countDown === -1)
+    population.Input(function(i) {
+      const bird = [ ...Scene.birds.values() ][i];
+      return [ bird.y / Scene.height - Scene.pipe[1], bird.vy / 10 ];
+    });
 
   pen.fillStyle = 'red';
   pen.fillRect(Scene.holeBoundingBox.x1, 0, Scene.pipeScale.width, Scene.holeBoundingBox.y1);
@@ -191,5 +247,5 @@ async function Update() {
 Update();
 
 addEventListener('keydown', e => {
-  if (e.key === 'k') for (const bird of Scene.birds) bird.kill();
+  if (e.key === 'k') population.KillAll();
 });

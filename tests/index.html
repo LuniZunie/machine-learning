@@ -22,70 +22,9 @@
     <link rel='stylesheet' type='text/css' href='./style.css' />
 
     <script src='../release/machine_learning.mjs' type='module'></script>
-    <script type='module'>
-      import Population from '../release/machine_learning.mjs';
-      import Config from '../release/module/config.mjs';
-
-      const population = new Population({
-        population: {
-          size: {
-            [Config.value]: 100,
-          }
-        },
-
-        network: {
-          dynamic: {
-            [Config.value]: true,
-          },
-
-          inputs: {
-            [Config.value]: 2,
-          },
-
-          outputs: {
-            [Config.value]: 1,
-          },
-        },
-
-        mutate: {
-          adapt: {
-            [Config.value]: true,
-          }
-        }
-      });
-      population.Start();
-
-      let scores = [];
-      population.Output(function(index, ...outputs) {
-        if (!Number.isNaN(outputs[0]))
-          scores.push(outputs[0]);
-      });
-
-      for (let i = 1; i <= 100; i++) {
-        population.Evolve();
-        scores = [];
-
-        for (let j = 0; j < 10; j++)
-          population.Input(function(index) {
-            return [ Math.random(), Math.random() ];
-          });
-
-        console.log(i, μ(scores));
-      }
-
-      function next() {
-        population.Evolve();
-        scores = [];
-        population.Input(function(index) {
-          return [ Math.random(), Math.random() ];
-        });
-
-        console.log(μ(scores));
-      }
-      window.next = next;
-    </script>
+    <script src='./script.mjs' type='module'></script>
   </head>
   <body>
-    <canvas id='scene' width='900' height='900'></canvas>
+    <canvas id='scene' width='1000' height='1000'></canvas>
   </body>
 </html>

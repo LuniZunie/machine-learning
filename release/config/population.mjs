@@ -82,6 +82,7 @@ export default new Config({
     reward: {
       function: { // default: mean of outputs function
         [Config.default]: function(...outputs) { return μ(outputs); }, // default: mean of outputs function
+        [Config.value]: function(...outputs) { return μ(outputs); }, // default: mean of outputs function
         [Config.deleter]: true, // allow deletion
 
         [Config.filter](v) { return typeof v === 'function'; }, // must be function
