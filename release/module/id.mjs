@@ -14,14 +14,15 @@
   limitations under the License.
 */
 
-import RejectionHandler from './debug.mjs';
+import './math.mjs';
+import Rejection from './debug.mjs';
 
 const labeledIds = new Map();
 const ids = new Set();
 
 export default Object.freeze({
   new(label) {
-    const reject = new RejectionHandler('Could not generate new ID!');
+    const reject = new Rejection('Could not generate new ID!');
 
     let group;
     if (label === undefined) group = ids;
@@ -32,14 +33,14 @@ export default Object.freeze({
 
     let id = 0;
     do
-      id = crypto.getRandomValues(new Uint32Array(1))[0];
+      id = Ξ.ℤ.II(0, 0xFFFFFFFF);
     while (group.has(id));
     group.add(id);
 
     return id;
   },
   has(label, id) {
-    const reject = new RejectionHandler('Could not find ID!');
+    const reject = new Rejection('Could not find ID!');
 
     let group;
     if (label === undefined) group = ids;
@@ -51,7 +52,7 @@ export default Object.freeze({
     return group.has(id);
   },
   delete(label, id) {
-    const reject = new RejectionHandler('Could not delete ID!');
+    const reject = new Rejection('Could not delete ID!');
 
     let group;
     if (label === undefined) group = ids;

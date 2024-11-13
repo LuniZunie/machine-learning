@@ -80,7 +80,7 @@ const population = new Population({
 
   mutate: {
     adapt: {
-      [Config.value]: true,
+      [Config.value]: false,
     }
   },
 });

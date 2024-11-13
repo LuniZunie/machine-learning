@@ -501,6 +501,15 @@ class NeuralNetwork {
     return set; // return set
   }
 
+  #UpdateAll() { // update all neurons
+    const reject = new Rejection('Could not update all neurons'); // create rejection handler
+    this.#_(reject); // check network existence
+
+    for (const layer of this.#layers.values()) // iterate over layers
+      for (const neuron of layer.values()) // iterate over neurons
+        neuron.Update(); // update neuron
+  }
+
   Input(...inputs) { // input data (inputs: number[])
     const reject = new Rejection('Could not input data into NeuralNetwork', 'inputs', inputs); // create rejection handler
     this.#_(reject); // check network existence
@@ -594,13 +603,13 @@ class NeuralNetwork {
           }
 
           const synapses = neuron.Synapse.input.list.entries(); // get neuron input synapses
-          for (const [ y, synapse ] of synapses) { // iterate over synapses
+          for (const [ input, synapse ] of synapses) { // iterate over synapses
             const mutations = config.root.mutate.adapt.synapse[Config.call](); // get synapse adaptations
             if (mutations.get('change')) { // if change adaptation exists
-              reset += `layers.get(${depth}).get(${y}).synapses.get(${neuron.y}).weight = ${synapse.weight};\n`; // reset synapse value
+              reset += `layers.get(${depth}).get(${neuron.y}).Synapse.input.Get(layers.get(${depth - 1}).get(${input.y})).weight = ${synapse.weight};\n`; // reset synapse value
 
               synapse.weight += mutations.get('change'); // change synapse value
-              recreate += `layers.get(${depth}).get(${y}).synapses.get(${neuron.y}).weight = ${synapse.weight};\n`; // recreate synapse value
+              recreate += `layers.get(${depth}).get(${neuron.y}).Synapse.input.Get(layers.get(${depth - 1}).get(${input.y})).weight = ${synapse.weight};\n`; // recreate synapse value
             }
           }
 
@@ -615,7 +624,7 @@ class NeuralNetwork {
       const reward = $rewardFunction(this.#index, ...output) || 0; // get reward
       if (typeof reward !== 'number') return reject.handle('Reward function did not return a number', 'reward', reward); // if reward is not a number, throw error
       else if (reward > best.reward) {
-        best = { network: `${recreate}`, reward, output }; // update best adaptation
+        best = { network: recreate, reward, output }; // update best adaptation
         if (i === 1) return output; // return output if first iteration, slight optimization
       }
 
@@ -636,7 +645,7 @@ class NeuralNetwork {
     if ($dynamic) {
       const mutations = config.root.mutate.evolve.layer[Config.call](); // get network evolutions
       for (let i = Math.min(mutations.get('remove'), this.#layers.size - 2); i > 0; i--) // iterate over layer removals
-        this.#Layer.Delete(Ξℤ(1, this.#layers.size - 1)); // delete random layer
+        this.#Layer.Delete(Ξ.ℤ.ee(0, this.#layers.size - 1)); // delete random layer
       for (let i = mutations.get('add'); i > 0; i--) this.#Layer.New(); // iterate over layer additions
     }
 
@@ -647,7 +656,7 @@ class NeuralNetwork {
       if ($dynamic && depth > 0 && depth < this.#layers.size - 1) { // if network is dynamic and layer is not input or output layer
         const mutations = config.root.mutate.evolve.neuron[Config.call](); // get layer evolutions
         for (let i = Math.min(mutations.get('remove'), layer.size - 1); i > 0; i--) // iterate over neuron removals
-          this.#Neuron.Delete(depth, Ξℤ(0, layer.size - 1)); // delete random neuron
+          this.#Neuron.Delete(depth, Ξ.ℤ.ie(0, layer.size - 1)); // delete random neuron
         for (let i = mutations.get('add'); i > 0; i--) this.#Neuron.New(depth); // iterate over neuron additions
       }
 
@@ -868,7 +877,7 @@ class Neuron {
 
     if (typeof n !== 'number') return reject.handle('Invalid bias type'); // if bias is not a number, throw error
 
-    return this.#bias = bias.clamp(...config.root.neuron.bias.range[Config.get]()); // return neuron bias
+    return this.#bias = n.clamp(...config.root.neuron.bias.range[Config.get]()); // return neuron bias
   }
 
   get value() { this.#_(new Rejection('Could not access neuron value')); return this.#value; } // get neuron value
@@ -1178,7 +1187,7 @@ class Synapse {
 
     if (typeof n !== 'number') return reject.handle('Invalid weight type'); // if weight is not a number, throw error
 
-    return this.#weight = weight.clamp(...config.root.synapse.weight.range[Config.get]()); // return synapse weight
+    return this.#weight = n.clamp(...config.root.synapse.weight.range[Config.get]()); // return synapse weight
   }
 
   Destruct() { // destruct synapse

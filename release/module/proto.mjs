@@ -15,12 +15,12 @@
 */
 
 import './math.mjs';
-import RejectionHandler from './debug.mjs';
+import Rejection from './debug.mjs';
 
 Object.defineProperties(Array.prototype, {
   'first': { get: function() { return this[0]; } },
   'last': { get: function() { return this[this.length - 1]; } },
-  'Ξ': { get: function() { return this[Ξ(this.length) | 0]; } },
+  'Ξ': { get: function() { return this[Ξ.ℤ.ie(0, this.length)]; } },
   'weight': { value: function(m = 1) {
     const σ = Σ(this);
     return this.map(v => v / σ * m);
@@ -44,15 +44,15 @@ Object.defineProperties(Map.prototype, {
     const σ = Σ(this.values());
     return new Map(Array.from(this, ([k, v]) => [k, v / σ * m]));
   } },
-  invertedWeight: { value: function(m = 1) {
+  inverseWeight: { value: function(m = 1) {
     const σ = Σ(this.values());
     return new Map(Array.from(this, ([k, v]) => [k, (σ - v) / σ * m]));
   } },
   Ξweighted: { value: function() {
-    return [ ...this.keys() ][Ξweighted([ ...this.values() ])];
+    return [ ...this.keys() ][Ξ.weighted([ ...this.values() ])];
   } },
-  ΞinvertedWeighted: { value: function() {
-    return [ ...this.keys() ][ΞinvertedWeighted([ ...this.values() ])];
+  ΞinverseWeighted: { value: function() {
+    return [ ...this.keys() ][Ξ.inverseWeighted([ ...this.values() ])];
   } },
   copy: { value: function() { return new Map(this); } },
   last: { get: function() { return this.get([ ...this.keys() ].last); } }

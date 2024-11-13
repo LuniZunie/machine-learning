@@ -17,7 +17,7 @@
 import '../module/utility.mjs';
 import '../module/logic_gate.mjs';
 import '../module/math.mjs';
-import RejectionHandler from '../module/debug.mjs';
+import Rejection from '../module/debug.mjs';
 import Config from '../module/config.mjs';
 
 export default new Config({
@@ -96,7 +96,7 @@ export default new Config({
         // activation function
         [Config.default]: 'sigmoid', // default: sigmoid function
         [Config.setter](fn) { // set function
-          const reject = new RejectionHandler('Invalid activation function.', 'function', fn); // create rejection handler
+          const reject = new Rejection('Invalid activation function.', 'function', fn); // create rejection handler
           let vars = [];
           if (typeof fn === 'function') return fn; // return function
           else if (typeof fn === 'object'){
@@ -193,7 +193,7 @@ export default new Config({
           return [ this.local.min[Config.get](), this.local.max[Config.get]() ]; // return range
         },
         [Config.setter](v) {
-          const reject = new RejectionHandler('Could not set neuron bias range.', 'range', v); // create rejection handler
+          const reject = new Rejection('Could not set neuron bias range.', 'range', v); // create rejection handler
 
           if (!Array.isArray(v) || v.length !== 2)
             reject.handle('Range must be an array of length 2.'); // reject invalid range
@@ -213,7 +213,7 @@ export default new Config({
         },
 
         [Config.method]() {
-          return Ξ(this.local.min[Config.get](), this.local.max[Config.get]()); // return random value
+          return Ξ.ℝ.ii(this.local.min[Config.get](), this.local.max[Config.get]()); // return random value [min, max]
         },
 
         min: { // default: -2
@@ -242,7 +242,7 @@ export default new Config({
           return [ this.local.min[Config.get](), this.local.max[Config.get]() ]; // return range
         },
         [Config.setter](v) {
-          const reject = new RejectionHandler('Could not set synapse weight range.', 'range', v); // create rejection handler
+          const reject = new Rejection('Could not set synapse weight range.', 'range', v); // create rejection handler
 
           if (!Array.isArray(v) || v.length !== 2)
             reject.handle('Range must be an array of length 2.'); // reject invalid range
@@ -262,7 +262,7 @@ export default new Config({
         },
 
         [Config.method]() {
-          return Ξ(this.local.min[Config.get](), this.local.max[Config.get]()); // return random value
+          return Ξ.ℝ.ii(this.local.min[Config.get](), this.local.max[Config.get]()); // return random value [min, max]
         },
 
         min: { // default: -1
@@ -306,7 +306,7 @@ export default new Config({
           [Config.getter](v) { return v / 100; }, // convert to percentage
           [Config.deleter]: true, // allow deletion
 
-          [Config.method](v) { return Ξlog(v) | 0; }, // check if random chance is met
+          [Config.method](v) { return Ξ.log(v) | 0; }, // check if random chance is met
 
           [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
           [Config.disabler]() {
@@ -320,7 +320,7 @@ export default new Config({
           [Config.getter](v) { return v / 100; }, // convert to percentage
           [Config.deleter]: true, // allow deletion
 
-          [Config.method](v) { return Ξlog(v) | 0; }, // check if random chance is met
+          [Config.method](v) { return Ξ.log(v) | 0; }, // check if random chance is met
 
           [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
           [Config.disabler]() {
@@ -346,7 +346,7 @@ export default new Config({
           [Config.getter](v) { return v / 100; }, // convert to percentage
           [Config.deleter]: true, // allow deletion
 
-          [Config.method](v) { return Ξlog(v) | 0; }, // check if random chance is met
+          [Config.method](v) { return Ξ.log(v) | 0; }, // check if random chance is met
 
           [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
           [Config.disabler]() {
@@ -367,7 +367,7 @@ export default new Config({
             [Config.getter](v) { return v / 100; }, // convert to percentage
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξif(v); }, // check if random chance is met
+            [Config.method](v) { return Ξ.if(v); }, // check if random chance is met
 
             [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
           },
@@ -376,7 +376,7 @@ export default new Config({
             [Config.default]: 0.5,
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξsign(0, v); }, // get value in range [-v, v]
+            [Config.method](v) { return Ξ.sign(Ξ.ℝ.ii, 0, v); }, // get value in range [-v, v]
 
             [Config.filter](v) { return Number.isFinite(v) && v >= 0; }, // positive (or zero) and finite
           },
@@ -387,7 +387,7 @@ export default new Config({
           [Config.getter](v) { return v / 100; }, // convert to percentage
           [Config.deleter]: true, // allow deletion
 
-          [Config.method](v) { return Ξlog(v) | 0; }, // check if random chance is met
+          [Config.method](v) { return Ξ.log(v) | 0; }, // check if random chance is met
 
           [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
           [Config.disabler]() {
@@ -413,7 +413,7 @@ export default new Config({
           [Config.getter](v) { return v / 100; }, // convert to percentage
           [Config.deleter]: true, // allow deletion
 
-          [Config.method](v) { return Ξif(v); }, // check if random chance is met
+          [Config.method](v) { return Ξ.if(v); }, // check if random chance is met
 
           [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
         },
@@ -430,7 +430,7 @@ export default new Config({
             [Config.getter](v) { return v / 100; }, // convert to percentage
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξif(v); }, // check if random chance is met
+            [Config.method](v) { return Ξ.if(v); }, // check if random chance is met
 
             [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
           },
@@ -439,7 +439,7 @@ export default new Config({
             [Config.default]: 0.2,
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξsign(0, v); }, // get value in range [-v, v]
+            [Config.method](v) { return Ξ.sign(Ξ.ℝ.ii, 0, v); }, // get value in range [-v, v]
 
             [Config.filter](v) { return Number.isFinite(v) && v >= 0; }, // positive (or zero) and finite
           },
@@ -450,7 +450,7 @@ export default new Config({
           [Config.getter](v) { return v / 100; }, // convert to percentage
           [Config.deleter]: true, // allow deletion
 
-          [Config.method](v) { return Ξif(v); }, // check if random chance is met
+          [Config.method](v) { return Ξ.if(v); }, // check if random chance is met
 
           [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
         },
@@ -509,7 +509,7 @@ export default new Config({
             [Config.getter](v) { return v / 100; }, // convert to percentage
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξif(v); }, // check if random chance is met
+            [Config.method](v) { return Ξ.if(v); }, // check if random chance is met
 
             [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
             [Config.disabler]() {
@@ -522,7 +522,7 @@ export default new Config({
             [Config.default]: 0.3,
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξsign(0, v); }, // get value in range [-v, v]
+            [Config.method](v) { return Ξ.sign(Ξ.ℝ.ii, 0, v); }, // get value in range [-v, v]
 
             [Config.filter](v) { return Number.isFinite(v) && v >= 0; }, // positive (or zero) and finite
             [Config.disabler]() {
@@ -566,7 +566,7 @@ export default new Config({
             [Config.getter](v) { return v / 100; }, // convert to percentage
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξif(v); }, // check if random chance is met
+            [Config.method](v) { return Ξ.if(v); }, // check if random chance is met
 
             [Config.filter](v) { return v >= 0 && v <= 100; }, // [0, 100]
             [Config.disabler]() {
@@ -579,7 +579,7 @@ export default new Config({
             [Config.default]: 0.2,
             [Config.deleter]: true, // allow deletion
 
-            [Config.method](v) { return Ξsign(0, v); }, // get value in range [-v, v]
+            [Config.method](v) { return Ξ.sign(Ξ.ℝ.ii, 0, v); }, // get value in range [-v, v]
 
             [Config.filter](v) { return Number.isFinite(v) && v >= 0; }, // positive (or zero) and finite
             [Config.disabler]() {

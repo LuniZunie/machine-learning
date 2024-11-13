@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-import RejectionHandler from './debug.mjs';
+import Rejection from './debug.mjs';
 
 export default class Config {
   // setters
@@ -76,7 +76,7 @@ export default class Config {
   get root() { return this.#config; } // get root
 
   put(o) { // configure object with reference (o: object)
-    const reject = new RejectionHandler('Failed to put object on config.', 'object', o);
+    const reject = new Rejection('Failed to put object on config.', 'object', o);
 
     if (typeof o !== 'object' || o === null) // if o is not an object or is null
       reject.handle('The object must be a valid object.'); // throw error
@@ -101,7 +101,7 @@ export default class Config {
   }
 
   #Configure(o) { // configure object (o: object)
-    const reject = new RejectionHandler('Failed to configure object.', 'object', o);
+    const reject = new Rejection('Failed to configure object.', 'object', o);
 
     if (typeof o !== 'object' || o === null) // if o is not an object or is null
       reject.handle('The object must be a valid object.'); // throw error

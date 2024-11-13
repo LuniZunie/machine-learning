@@ -14,6 +14,8 @@
   limitations under the License.
 */
 
+import './random.mjs';
+
 /**
  * @file math.mjs
  * @module math
@@ -130,133 +132,6 @@ const μ = numbers => Σ(numbers) / numbers.length; // MU — mean
 Object.defineProperty(window, 'μ', { value: μ });
 
 /**
- * @function
- * @name XI
- * @param {number=} [a=1] - Minimum value (inclusive) – Maximum value (exclusive) when b is defined
- * @param {number=} b - Maximum value (exclusive)
- * @returns {number}
- * @description Random number generator
- * @example
- * Ξ(1, 10) // Random number 1 ≤ x < 10
- * Ξ(5) // Random number 0 ≤ x < 5
- * Ξ() // Random number 0 ≤ x < 1
- */
-const Ξ = (a = 1, b) => b === undefined ? Math.random() * a : Math.random() * (b - a) + a; // XI — random number
-Object.defineProperty(window, 'Ξ', { value: Ξ });
-
-/**
- * @function
- * @name XIsign
- * @param {number=} [a=1] - Positive number
- * @param {number=} b - Positive number
- * @returns {number}
- * @description Random number generator with sign
- * @example
- * Ξsign(1, 10) // Random number -10 < x ≤ -1 or 1 ≤ x < 10
- * Ξsign(5) // Random number -5, 5
- * Ξsign() // Random number -1, 1
- */
-const Ξsign = (a = 1, b) => { // XI — random number with sign
-  if (b === undefined) return Math.random() < 0.5 ? -a : a;
-
-  return Math.random() < 0.5 ?
-    -(Math.random() * (b - a) + a) :
-    (Math.random() * (b - a) + a);
-};
-Object.defineProperty(window, 'Ξsign', { value: Ξsign });
-
-/**
- * @function
- * @name XIint
- * @param {number} a - Minimum value (inclusive) – Maximum value (exclusive) when b is defined
- * @param {number} b - Maximum value (exclusive)
- * @returns {number}
- * @description Random integer generator
- * @example
- * Ξℤ(1, 10) // Random integer 1 ≤ x < 10
- * Ξℤ(5) // Random integer 0 ≤ x < 5
- * Ξℤ() // 0
- * Ξℤ(1.5, 10.5) // Random integer 1 ≤ x < 10
- */
-const Ξℤ = (a, b) => Ξ(a, b) | 0; // XIint — random integer
-Object.defineProperty(window, 'Ξℤ', { value: Ξℤ });
-
-/**
- * @function
- * @name XIif
- * @param {number} [number=0.5] - Probability (0 ≤ x ≤ 1)
- * @returns {boolean}
- * @description Random boolean generator
- * @example
- * Ξif(0.4) // 40% probability of true
- * Ξif() // 50% probability of true
- */
-const Ξif = (number = 0.5) => Math.random() < number; // XIif — random boolean
-Object.defineProperty(window, 'Ξif', { value: Ξif });
-
-/**
- * @function
- * @name XIlog
- * @param {number} [number=0.5] - Probability (0 ≤ x ≤ 1)
- * @returns {number}
- * @description Random logarithmic generator
- * @example
- * Ξlog(0.5) // 50% of 0, 25% of 1, 12.5% of 2, 6.25% of 3, etc.
- * Ξlog() // 50% of 0, 25% of 1, 12.5% of 2, 6.25% of 3, etc.
- * Ξlog(0.1) // 10% of 0, 1% of 1, 0.1% of 2, 0.01% of 3, etc.
- */
-const Ξlog = (number = 0.5) => Math.log(Math.random()) / Math.log(number); // XIchain — random chain
-Object.defineProperty(window, 'Ξlog', { value: Ξlog });
-
-/**
- * @function
- * @name XIweighted
- * @param {number[]} weights - Array of weights
- * @returns {number}
- * @description Returns number based on weights (higher weight = higher probability)
- * @example
- * Ξweighted([ 1, 9 ]) // returns 0 with 10% probability and 1 with 90% probability
- * Ξweighted([ 9, 1 ]) // returns 0 with 90% probability and 1 with 10% probability
- */
-const Ξweighted = (weights) => { // weighted random
-  const σ = Σ(weights); // sum of weights
-  let ξ = Ξ(σ); // random number
-
-  let i = 0;
-  for (let w of weights) { // for each weight
-    w = +w; // convert weight to number
-    if (ξ < w) return i; // if random number is less than weight return index
-    ξ -= w; // subtract weight from random number
-    i++;
-  }
-}
-Object.defineProperty(window, 'Ξweighted', { value: Ξweighted });
-
-/**
- * @function
- * @name XIinvertedWeighted
- * @param {number[]} weights - Array of weights
- * @returns {number}
- * @description Returns number based on weights (lower weight = higher probability)
- * @example
- * ΞinvertedWeighted([ 1, 9 ]) // returns 0 with 90% probability and 1 with 10% probability
- * ΞinvertedWeighted([ 9, 1 ]) // returns 0 with 10% probability and 1 with 90% probability
- */
-const ΞinvertedWeighted = (weights) => { // inverted weighted random
-  const σ = Σ(weights); // sum of weights
-  let ξ = Ξ(σ); // random number
-
-  let i = 0;
-  for (let w of weights) { // for each weight
-    w = σ - w; // invert weight
-    if (ξ < +w) return i; // if random number is less than weight return index
-    ξ -= +w; // subtract weight from random number
-    i++;
-  }
-}
-Object.defineProperty(window, 'ΞinvertedWeighted', { value: ΞinvertedWeighted });
-
-/**
  * @constant
  * @name pi
  * @type {number}
@@ -345,50 +220,6 @@ Object.defineProperty(window, 'ψ', { value: ψ });
  */
 const ω = 0.567143290409783872999968662210355549753815787186512508135131079223045793086684566693219446961752294557638; // omega — Omega constant
 Object.defineProperty(window, 'ω', { value: ω });
-
-/**
- * @function
- * @param {number[]} weights - Array of weights
- * @returns {number}
- * @description Returns number based on weights (higher weight = higher probability)
- * @example
- * Math.wΞ([ 1, 9 ]) // returns 0 with 10% probability and 1 with 90% probability
- */
-Math.wΞ = function(weights) { // weighted random
-  const σ = Σ(weights);
-  let ξ = Ξ(σ);
-
-  let i = 0;
-  for (let w of weights) {
-    w = +w;
-    if (ξ < w) return i;
-    ξ -= w;
-    i++;
-  }
-}
-
-/**
- * @function
- * @param {number[]} weights - Array of weights
- * @returns {number}
- * @description Returns number based on weights (lower weight = higher probability)
- * @example
- * Math.iwΞ([ 1, 9 ]) // returns 0 with 90% probability and 1 with 10% probability
- */
-Math.iwΞ = function(weights) { // inverted weighted random
-  const σ = Σ(weights);
-  let ξ = Ξ(σ);
-
-  let i = 0;
-  for (let w of weights) {
-    w = σ - w;
-    if (ξ < +w) return i;
-    ξ -= +w;
-    i++;
-  }
-
-  return weights.length - 1;
-}
 
 /**
  * @function
