@@ -15,250 +15,240 @@
  -->
 
 <!--
-OLD FORMAT
+v1 FORMAT
 [<major|minor|patch>]<dev|a|b|rc|rel><major #>.<minor #>.<patch #– <STABLE|UNSTABLE|FATAL>
 
-NEW FORMAT
+v2 FORMAT
 [<release|minor|rc|beta|dev_major|dev_minor|patch>]<release>.<minor>#<release-candidate>.<beta>.<major-dev>.<major-dev><patch (letter)> – <STABLE|UNSTABLE|FATAL>
+
+v3 FORMAT
+Prefix:
+  - R: major release (0-9)
+  - r: minor release (0-9)
+  - rc: release candidate (0-9)
+  - b: beta release (0-9)
+  - D: major development release (0-9)
+  - d: minor development release (0-9)
+  - p: patch (a-z)
+
+Version Number:
+  R.r_rc.b:D.dp
+
+Suffix:
+  - <blank>: STABLE
+  - !: UNSTABLE
 -->
 
-# [patch]0.0_0.0.0.0a – STABLE
-> *committed as* **Initial commit** *(1)*
+# p0.0_0.1:0.3b
 
-> only an overview is provided for this commit
-
-## Overview
-- Initial commit
-- Created repository
-
-<br>
-<br>
-<br>
-
-# [dev_major]0.0_0.0.1.0a – FATAL
-> *committed as* **Initial commit** *(2)*
-
-> only an overview is provided for this commit
-
-## Overview
-- Created module
-
-<br>
-<br>
-<br>
-
-# [dev_major]0.0_0.0.2.0a – FATAL
-> *committed as* **created modules and mach…**
-
-> only an overview is provided for this commit
-
-## Overview
-- Created modules
-- Created machine learning concept
-- Created test for machine learning
-
-<br>
-<br>
-<br>
-
-# [dev_major]0.0_0.0.3.0a – FATAL
-> *committed as* **updated config module, ma…**
-
-> only an overview is provided for this commit
-
-## Overview
-- Updated config module
-- Major optimizations tested in first version of machine learning
-- Created script to draw networks
-- Began work on new version of machine learning
-- Rewrote configuration for machine learning and gave it it's own file
-- Cleaned up files
-
-<br>
-<br>
-<br>
-
-# [dev_minor]0.0_0.0.3.1a – FATAL
-> *committed as* **Created LICENSE**
-
-Added Apache License 2.0 to repository
-
-## New
-- Created `LICENSE`
-  - Apache License 2.0
-
-<br>
-<br>
-<br>
-
-# [patch]0.0_0.0.3.1b – FATAL
-> *committed as* **Add license headers to files**
-
-Added license headers to all files
-
-## New
-- Added license headers to all files
-  - From `LICENSE`
-
-<br>
-<br>
-<br>
-
-# [dev_major]0.0_0.0.4.0a – FATAL
-> *committed as* **added readme, added most of n…**
-
-> only an overview is provided for this commit
-
-## Overview
-- Added most of neuron logic
-- Created `README`
-- Created `release\module\proto.mjs`
-- Created `release\module\id.mjs`
-- Fixed bugs in `release\module\config.mjs`
-
-<br>
-<br>
-<br>
-
-# [patch]0.0_0.0.4.0b – FATAL
-> *committed as* **fixed README by changing to…**
-
-Made `README` a markdown file
-
-## Fixed
-- `README` ⟶ `README.md`
-
-<br>
-<br>
-<br>
-
-# [patch]0.0_0.0.4.0c – FATAL
-> *committed as* **added underdevelopment notic…**
-
-Updated `README.md`
-
-## New
-- Added underdevelopment notice to `README.md`
-
-<br>
-<br>
-<br>
-
-# [dev_minor]0.0_0.0.4.1a – FATAL
-> *committed as* **cleaned up file system, added ac…**
-
-> only an overview is provided for this commit
-
-## Overview
-- Cleaned up file system
-- Added activation functions
-- `config.neuron.value.function` ⟶ `config.neuron.activation.function`
-
-<br>
-<br>
-<br>
-
-# [dev_major]0.0_0.0.5.0a – FATAL
-> *committed as* **- Reworked entire module**
-
-> only an overview is provided for this commit
-
-Complete rework of the entire module
-
-## Overview
-- Much faster and more efficient
-- More flexible and easier to use
-- More stable and less prone to errors
-- More readable and easier to debug
-- Less memory consumption
-
-<br>
-<br>
-<br>
-
-# [dev_minor]0.0_0.0.5.1a – FATAL
-> *committed as* **dev2.1.0 – FATALLY UNSTABLE**
-
-Cleaned up code and improved readability and debugging
-
-## New
-- Module test
-- `Network.#index`
-  - Index of the network in the population
-- `Population.Output()`
-  - Replaces `config.network.output.function`
-  - More flexible and easier to use
-  - Faster than previous method
-- `Population.#Statistics`
-  - Track best and worst networks
-  - Generation number
-  - Graph of each networks score
-  - **More to come**
-- `release\module\machine_learning_backup.mjs`
-  - Backup of old machine learning module
+Fixed issues with version history
 
 ## Changed
-- Cleaned up code
-  - `RejectionHandler` has been renamed to `Rejection`
-  - A `"$"` has been added to the beginning of all variables related to config
-  - Broke down complex lines of code into multiple lines
-- General changes
-  - Better error handling
-  - Improved code consistency and readability
-- `ID.has(id, label)` ⟶ `ID.has(label, id)`
-- `ID.delete(id, label)` ⟶ `ID.delete(label, id)`
-- `Network.Deconstruct()` ⟶ `Network.Destruct()`
-- `Network.Neuron.get` ⟶ `Network.Neuron.Get`
-- `Neuron.Deconstruct()` ⟶ `Neuron.Destruct()`
+- Changed version naming convention
+  - Prefixes
+    - **[release]** ⟶ **R**
+    - **[minor]** ⟶ **r**
+    - **[release_candidate]** ⟶ **rc**
+    - **[beta]** ⟶ **b**
+    - **[dev_major]** ⟶ **D**
+    - **[dev_minor]** ⟶ **d**
+    - **[patch]** ⟶ **p**
+  - Version Number is now **R.r_rc.b:D.dp**
+  - Suffixes
+    - **STABLE** ⟶
+    - **UNSTABLE** ⟶ **!**
+    - **FATAL** ⟶ **!**
+- Commit messages now only show the version name and description
+- `VERSIONS.md`
+  - Newer versions are now at the top of the file
+
+## Fixed
+- `VERSIONS.md`
+  - Minor developer version for **d0.0_0.1.0.3a** was incorrectly set to **1**
+  - "*committed as*" note for **d0.0_0.1:0.2a** and **d0.0_0.1:0.1a** were missing "# [PATCH]" at the start of the version name
+
+<br>
+<br>
+<br>
+
+# d0.0_0.1:0.3a
+> *committed as* **[dev_minor]0.0_0.1.0.1a – STABLE**
+
+Added version history
+
+## New
+- `VERSIONS.md`
+  - Version history of the repository
+
+## Fixed
+- `release\module\random.mjs`
+  - Added legal notice
+
+<br>
+<br>
+<br>
+
+# d0.0_0.1:0.2a
+> *committed as* **# [PATCH]dev2.3.4 – STABLE**
+
+Bug fixes and improved code consistency
+
+## Fixed
+- Synapse weight calculation
+  - random weight generation is now inclusive-inclusive [min, max] instead of inclusive-exclusive [min, max)
+- Neuron bias calculation
+  - random bias generation is now inclusive-inclusive [min, max] instead of inclusive-exclusive [min, max)
+- `Network.#Adapt()`
+  - Fixed bug where `Network.#Adapt()` would not run correctly
+  - Fixed error where network not reset properly after adaptation
+- `Neuron.bias setter`
+  - Fixed error when setting `Neuron.bias`
+- `Synapse.weight setter`
+  - Fixed error when setting `Synapse.weight`
+
+<br>
+<br>
+<br>
+
+# d0.0_0.1:0.1a
+> *committed as* **# [PATCH]dev2.3.3 – STABLE**
+
+Bug fixes and convenience features
+
+## New
+- Flappy bird module test
+- `Population.Kill()`
+  - Kills the ``NeuralNetwork`` at the specified index
+- `Population.KillAll()`
+  - Kills all ``NeuralNetworks`` in the population
+
+## Changed
+- Commit message format
+- `Network.#Adapt()`
+  - Based on `reward` derivative instead of `score` derivative
+- `Neuron.CalculateUpdateFunction()`
+  - `synapse.weight` is now a reference to a number instead of a number
+  - `this.bias` is now a reference to a number instead of a number
+
+## Fixed
+- `config.network.reward.function`
+  - Fixed error when attempting to set `config.network.reward.function`
+  - Now receives the proper `index` as first parameter
+- `Network.#Reward()`
+  - Fixed bug stopping `Network.#Adapt()` from getting called
 - `Population.Input()`
-  - Now returns `true` instead of the number of alive networks
-- `Population.status`
-  1. `"stopped"` ⟶ `"off"`
-  2. `"idle"` ⟶ `"idle"`
-  3. `"running"` ⟶ `"active"`
-  - Updated associated errors and comments
-- `Synapse.Deconstruct()` ⟶ `Synapse.Destruct()`
+  - Now receives the proper `index` as first parameter
 
 ## Removed
-- `cache` in `machine_learning.mjs`
-  - Unnecessary and unused
-- `config.network.output.function`
-  - Handled by `Population.Output()` instead to allow for more flexibility
-- `Population.alive getter`
-- `Population.dead getter`
-- `Population.#preloaded`
-  - Overly complicated and unnecessary
-- `Population.size getter`
+- Old module test
+- Unnecessary `Neuron.CalculateUpdateFunction()` calls
 
 <br>
 <br>
 <br>
 
-# [patch]0.0_0.0.5.1b – FATAL
-> *committed as* **dev2.1.1 – FATALLY UNSTABLE**
+# p0.0_0.1:0.0c
+> *committed as* **[PATCH]dev2.3.2 – STABLE**
 
-Cleaned up code and minor bug fixes
+Cleaned up code and optimization
 
 ## Changed
-- Cleaned up code
-  - Created methods for repeated code
-- Module test
-  - Removed `network.reward.function` test
-- Moved classes into global scope
-  - `Population.#NETWORK` ⟶ `NeuralNetwork`
-  - `Population.#NETWORK.#NEURON` ⟶ `Neuron`
-  - `Population.#NETWORK.#NEURON.#SYNAPSE` ⟶ `Synapse`
+- Optimized array copying
+
+## Removed
+- completed TODOs
+- `tests\draw_network.mjs`
+  - No longer works with module
+
+<br>
+<br>
+<br>
+
+# p0.0_0.1:0.0b
+> *committed as* **dev2.3.1 – STABLE**
+
+Cleaned up code
+
+## Removed
+- `release\machine_learning_backup.mjs`
+- `release\machine_learning_old.mjs`
+
+<br>
+<br>
+<br>
+
+# b0.0_0.1:0.0a
+> *committed as* **dev2.3.0 – STABLE**
+
+New config system with major optimization and bug fixes
+
+## New
+- `release\module\config.mjs`
+  - New config system
+  - Highly optimized
+  - Fixed multiple bugs fixed from old system
+  - Fixed major fatal errors from old system
+
+## Changed
+- `Population.config`
+  - Updated to new config system
+- `release\config\population.mjs`
+  - Rewrote entire config to work with new config system
+  - Mutation chances and amounts updated
+  - Expanded range of `Neuron.bias`
 
 ## Fixed
-- General fixes
-  - Multiple syntax errors
+- Debugger
+  - Bug where debugger would stop working after the first generation
+
+## Removed
+- `release\module\config.mjs`
+  - Removed old config system
+- `Population.statistics`
+  - **Temporary** removed due to extremely high computational and memory cost
+  - Will be re-added in a later version when optimized
 
 <br>
 <br>
 <br>
 
-# [dev_minor]0.0_0.0.5.2a – FATAL
+# p0.0_0.0:5.2b!
+> *committed as* **dev2.2.1 – UNSTABLE**
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Minor bug fixes for dynamic networks and improved code consistency
+
+## Changed
+- Debugging
+  - Caught `Rejections` no longer output debug information to console
+  - Turned on by default
+- `release\config\population.mjs`
+  - Dynamic networks turned on by default
+  - Default network input size is now `1`
+
+## Fixed
+- Code consistency
+  - Fixed multiple minor inconsistencies in code
+- `Network.Evolve()`
+  - Fixed error when in dynamic mode, indexes for layers and neurons could be generated as floats instead of integers
+- `Network.#Layer.New()`
+  - Fixed error with synapses not being created properly
+- `Network.#Layer.Delete()`
+  - Fixed error where an incorrect layer would be deleted
+- `Network.#Neuron.Delete()`
+  - Fixed error where neurons would not fill into deleted neuron gap
+- `Network.Reset()`
+  - Bug where all new neurons would be added to the input layer
+
+<br>
+<br>
+<br>
+
+# d0.0_0.0:5.2a!
 > *committed as* **dev2.2.0 – UNSTABLE**
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
 
 Major bug fixes and optimizations
 
@@ -340,169 +330,257 @@ Major bug fixes and optimizations
 <br>
 <br>
 
-# [patch]0.0_0.0.5.2b – FATAL
-> *committed as* **dev2.2.1 – UNSTABLE**
+# p0.0_0.0:5.1b!
+> *committed as* **dev2.1.1 – FATALLY UNSTABLE**
 
-Minor bug fixes for dynamic networks and improved code consistency
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Cleaned up code and minor bug fixes
 
 ## Changed
-- Debugging
-  - Caught `Rejections` no longer output debug information to console
-  - Turned on by default
-- `release\config\population.mjs`
-  - Dynamic networks turned on by default
-  - Default network input size is now `1`
+- Cleaned up code
+  - Created methods for repeated code
+- Module test
+  - Removed `network.reward.function` test
+- Moved classes into global scope
+  - `Population.#NETWORK` ⟶ `NeuralNetwork`
+  - `Population.#NETWORK.#NEURON` ⟶ `Neuron`
+  - `Population.#NETWORK.#NEURON.#SYNAPSE` ⟶ `Synapse`
 
 ## Fixed
-- Code consistency
-  - Fixed multiple minor inconsistencies in code
-- `Network.Evolve()`
-  - Fixed error when in dynamic mode, indexes for layers and neurons could be generated as floats instead of integers
-- `Network.#Layer.New()`
-  - Fixed error with synapses not being created properly
-- `Network.#Layer.Delete()`
-  - Fixed error where an incorrect layer would be deleted
-- `Network.#Neuron.Delete()`
-  - Fixed error where neurons would not fill into deleted neuron gap
-- `Network.Reset()`
-  - Bug where all new neurons would be added to the input layer
+- General fixes
+  - Multiple syntax errors
 
 <br>
 <br>
 <br>
 
-# [beta]0.0_0.1.0.0a – STABLE
-> *committed as* **dev2.3.0 – STABLE**
+# d0.0_0.0:5.1a!
+> *committed as* **dev2.1.0 – FATALLY UNSTABLE**
 
-New config system with major optimization and bug fixes
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Cleaned up code and improved readability and debugging
 
 ## New
-- `release\module\config.mjs`
-  - New config system
-  - Highly optimized
-  - Fixed multiple bugs fixed from old system
-  - Fixed major fatal errors from old system
+- Module test
+- `Network.#index`
+  - Index of the network in the population
+- `Population.Output()`
+  - Replaces `config.network.output.function`
+  - More flexible and easier to use
+  - Faster than previous method
+- `Population.#Statistics`
+  - Track best and worst networks
+  - Generation number
+  - Graph of each networks score
+  - **More to come**
+- `release\module\machine_learning_backup.mjs`
+  - Backup of old machine learning module
 
 ## Changed
-- `Population.config`
-  - Updated to new config system
-- `release\config\population.mjs`
-  - Rewrote entire config to work with new config system
-  - Mutation chances and amounts updated
-  - Expanded range of `Neuron.bias`
-
-## Fixed
-- Debugger
-  - Bug where debugger would stop working after the first generation
-
-## Removed
-- `release\module\config.mjs`
-  - Removed old config system
-- `Population.statistics`
-  - **Temporary** removed due to extremely high computational and memory cost
-  - Will be re-added in a later version when optimized
-
-<br>
-<br>
-<br>
-
-# [patch]0.0_0.1.0.0b – STABLE
-> *committed as* **dev2.3.1 – STABLE**
-
-Cleaned up code
-
-## Removed
-- `release\machine_learning_backup.mjs`
-- `release\machine_learning_old.mjs`
-
-<br>
-<br>
-<br>
-
-# [patch]0.0_0.1.0.0c – STABLE
-> *committed as* **[PATCH]dev2.3.2 – STABLE**
-
-Cleaned up code and optimization
-
-## Changed
-- Optimized array copying
-
-## Removed
-- completed TODOs
-- `tests\draw_network.mjs`
-  - No longer works with module
-
-<br>
-<br>
-<br>
-
-# [dev_minor]0.0_0.1.0.1a – STABLE
-> *committed as* **dev2.3.3 – STABLE**
-
-Bug fixes and convenience features
-
-## New
-- Flappy bird module test
-- `Population.Kill()`
-  - Kills the ``NeuralNetwork`` at the specified index
-- `Population.KillAll()`
-  - Kills all ``NeuralNetworks`` in the population
-
-## Changed
-- Commit message format
-- `Network.#Adapt()`
-  - Based on `reward` derivative instead of `score` derivative
-- `Neuron.CalculateUpdateFunction()`
-  - `synapse.weight` is now a reference to a number instead of a number
-  - `this.bias` is now a reference to a number instead of a number
-
-## Fixed
-- `config.network.reward.function`
-  - Fixed error when attempting to set `config.network.reward.function`
-  - Now receives the proper `index` as first parameter
-- `Network.#Reward()`
-  - Fixed bug stopping `Network.#Adapt()` from getting called
+- Cleaned up code
+  - `RejectionHandler` has been renamed to `Rejection`
+  - A `"$"` has been added to the beginning of all variables related to config
+  - Broke down complex lines of code into multiple lines
+- General changes
+  - Better error handling
+  - Improved code consistency and readability
+- `ID.has(id, label)` ⟶ `ID.has(label, id)`
+- `ID.delete(id, label)` ⟶ `ID.delete(label, id)`
+- `Network.Deconstruct()` ⟶ `Network.Destruct()`
+- `Network.Neuron.get` ⟶ `Network.Neuron.Get`
+- `Neuron.Deconstruct()` ⟶ `Neuron.Destruct()`
 - `Population.Input()`
-  - Now receives the proper `index` as first parameter
+  - Now returns `true` instead of the number of alive networks
+- `Population.status`
+  1. `"stopped"` ⟶ `"off"`
+  2. `"idle"` ⟶ `"idle"`
+  3. `"running"` ⟶ `"active"`
+  - Updated associated errors and comments
+- `Synapse.Deconstruct()` ⟶ `Synapse.Destruct()`
 
 ## Removed
-- Old module test
-- Unnecessary `Neuron.CalculateUpdateFunction()` calls
+- `cache` in `machine_learning.mjs`
+  - Unnecessary and unused
+- `config.network.output.function`
+  - Handled by `Population.Output()` instead to allow for more flexibility
+- `Population.alive getter`
+- `Population.dead getter`
+- `Population.#preloaded`
+  - Overly complicated and unnecessary
+- `Population.size getter`
 
 <br>
 <br>
 <br>
 
-# [dev_minor]0.0_0.1.0.2a – STABLE
-> *committed as* **dev2.3.4 – STABLE**
+# D0.0_0.0:5.0a!
+> *committed as* **- Reworked entire module**
 
-Bug fixes and improved code consistency
+> only an overview is provided for this commit
 
-## Fixed
-- Synapse weight calculation
-  - random weight generation is now inclusive-inclusive [min, max] instead of inclusive-exclusive [min, max)
-- Neuron bias calculation
-  - random bias generation is now inclusive-inclusive [min, max] instead of inclusive-exclusive [min, max)
-- `Network.#Adapt()`
-  - Fixed bug where `Network.#Adapt()` would not run correctly
-  - Fixed error where network not reset properly after adaptation
-- `Neuron.bias setter`
-  - Fixed error when setting `Neuron.bias`
-- `Synapse.weight setter`
-  - Fixed error when setting `Synapse.weight`
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Complete rework of the entire module
+
+## Overview
+- Much faster and more efficient
+- More flexible and easier to use
+- More stable and less prone to errors
+- More readable and easier to debug
+- Less memory consumption
 
 <br>
 <br>
 <br>
 
-# [dev_minor]0.0_0.1.0.1a – STABLE
+# d0.0_0.0:4.1a!
+> *committed as* **cleaned up file system, added ac…**
 
-Added version history
+> only an overview is provided for this commit
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+## Overview
+- Cleaned up file system
+- Added activation functions
+- `config.neuron.value.function` ⟶ `config.neuron.activation.function`
+
+<br>
+<br>
+<br>
+
+# p0.0_0.0:4.0c!
+> *committed as* **added underdevelopment notic…**
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Updated `README.md`
 
 ## New
-- `VERSIONS.md`
-  - Version history of the repository
+- Added underdevelopment notice to `README.md`
+
+<br>
+<br>
+<br>
+
+# p0.0_0.0:4.0b!
+> *committed as* **fixed README by changing to…**
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Made `README` a markdown file
 
 ## Fixed
-- `release\module\random.mjs`
-  - Added legal notice
+- `README` ⟶ `README.md`
+
+<br>
+<br>
+<br>
+
+# D0.0_0.0:4.0a!
+> *committed as* **added readme, added most of n…**
+
+> only an overview is provided for this commit
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+## Overview
+- Added most of neuron logic
+- Created `README`
+- Created `release\module\proto.mjs`
+- Created `release\module\id.mjs`
+- Fixed bugs in `release\module\config.mjs`
+
+<br>
+<br>
+<br>
+
+# p0.0_0.0:3.1b!
+> *committed as* **Add license headers to files**
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Added license headers to all files
+
+## New
+- Added license headers to all files
+  - From `LICENSE`
+
+<br>
+<br>
+<br>
+
+# d0.0_0.0:3.1a!
+> *committed as* **Created LICENSE**
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+Added Apache License 2.0 to repository
+
+## New
+- Created `LICENSE`
+  - Apache License 2.0
+
+<br>
+<br>
+<br>
+
+# D0.0_0.0:3.0a!
+> *committed as* **updated config module, ma…**
+
+> only an overview is provided for this commit
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+## Overview
+- Updated config module
+- Major optimizations tested in first version of machine learning
+- Created script to draw networks
+- Began work on new version of machine learning
+- Rewrote configuration for machine learning and gave it it's own file
+- Cleaned up files
+
+<br>
+<br>
+<br>
+
+# D0.0_0.0:2.0a!
+> *committed as* **created modules and mach…**
+
+> only an overview is provided for this commit
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+## Overview
+- Created modules
+- Created machine learning concept
+- Created test for machine learning
+
+<br>
+<br>
+<br>
+
+# D0.0_0.0:1.0a!
+> *committed as* **Initial commit** *(2)*
+
+> only an overview is provided for this commit
+
+> **!! THIS VERSION IS UNSTABLE AND SHOULD NOT BE USED IN PRODUCTION !!**
+
+## Overview
+- Created module
+
+<br>
+<br>
+<br>
+
+# p0.0_0.0:0.0a
+> *committed as* **Initial commit** *(1)*
+
+> only an overview is provided for this commit
+
+## Overview
+- Initial commit
+- Created repository
